@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>NSCameraUsageDescription</key>
+<string>ビデオの撮影を行うためにカメラへのアクセスが必要です。</string>
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>撮影したビデオをカメラロールに保存するために写真ライブラリへのアクセスが必要です。</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>撮影したビデオをライブラリに正しく保存するために、写真へのアクセスを許可してください。</string>
+</dict>
+</plist>
