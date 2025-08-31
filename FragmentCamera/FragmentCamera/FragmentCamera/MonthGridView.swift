@@ -39,20 +39,21 @@ struct DayCellView: View {
                     // Thumbnail (hide per-clip duration to avoid confusion)
                     VideoThumbnailView(asset: rep, viewModel: viewModel, size: side, showsDurationBadge: false)
 
-                    // Date + weekday label (top-left)
+                    // Weekday over Day (top-left, stacked)
                     VStack {
                         HStack {
-                            HStack(spacing: 4) {
-                                Text(dayNumber(from: date))
-                                    .font(.system(size: 11, weight: .semibold))
+                            VStack(alignment: .leading, spacing: 0) {
                                 Text(weekdayShort(from: date))
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                Text(dayNumber(from: date))
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.primary)
                             }
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 4)
                             .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .padding(6)
                             Spacer()
                         }
@@ -123,13 +124,18 @@ struct DayCellView: View {
                 } else if let date = date { // day with no assets (for 7-col calendar)
                     VStack {
                         HStack {
-                            HStack(spacing: 4) {
-                                Text(dayNumber(from: date))
-                                    .font(.system(size: 12, weight: .regular))
+                            VStack(alignment: .leading, spacing: 0) {
                                 Text(weekdayShort(from: date))
-                                    .font(.system(size: 11, weight: .regular))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                Text(dayNumber(from: date))
+                                    .font(.system(size: 14, weight: .bold))
                                     .foregroundColor(.secondary)
                             }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .padding(6)
                             Spacer()
                         }
