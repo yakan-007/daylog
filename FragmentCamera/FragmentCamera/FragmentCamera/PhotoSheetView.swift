@@ -164,6 +164,8 @@ struct PhotoSheetView: View {
                     onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
                     onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
                     onDeleteDay: { assets in self.delete(assets: assets) },
+                    onPlayMonth: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                    onShareMonth: { assets in self.shareAssets = sortOldestFirst(assets) },
                     isSelecting: $isSelecting,
                     selectedIds: $selectedIds
                 )

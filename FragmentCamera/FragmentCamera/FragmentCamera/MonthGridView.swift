@@ -177,6 +177,8 @@ struct MonthGridView: View {
     var onTapDay: ([PHAsset]) -> Void
     var onShareDay: (([PHAsset]) -> Void)? = nil
     var onDeleteDay: (([PHAsset]) -> Void)? = nil
+    var onPlayMonth: (([PHAsset]) -> Void)? = nil
+    var onShareMonth: (([PHAsset]) -> Void)? = nil
     @Binding var isSelecting: Bool
     @Binding var selectedIds: Set<String>
     @Environment(\.horizontalSizeClass) private var hSize
@@ -194,6 +196,22 @@ struct MonthGridView: View {
                                     .font(.headline)
                                     .fontWeight(.bold)
                                 Spacer()
+                                HStack(spacing: 10) {
+                                    if let onPlayMonth = onPlayMonth {
+                                        Button(action: { onPlayMonth(sortedOldest(allAssets(in: month))) }) {
+                                            Label("再生", systemImage: "play.fill")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                    if let onShareMonth = onShareMonth {
+                                        Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
+                                            Label("共有", systemImage: "square.and.arrow.up")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
                             }
                             if useAdaptive {
                                 // Adaptive grid: only existing days, bigger tiles, vertical scroll
@@ -220,6 +238,15 @@ struct MonthGridView: View {
                                 let horizontalPadding: CGFloat = 16
                                 let available = max(0, proxy.size.width - horizontalPadding - totalSpacing)
                                 let cell = floor(available / CGFloat(columnsCount))
+                                // Weekday header row
+                                HStack(spacing: spacing) {
+                                    ForEach(weekdaySymbols(), id: \.self) { wd in
+                                        Text(wd)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: cell)
+                                    }
+                                }
                                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: spacing, alignment: .center), count: columnsCount), spacing: spacing) {
                                     // Leading empty days
                                     ForEach(0..<month.leadingEmpty, id: \.self) { _ in
@@ -277,5 +304,17 @@ struct MonthGridView: View {
         } else {
             selectedIds.formUnion(ids)
         }
+    }
+
+    private func allAssets(in month: MonthSection) -> [PHAsset] {
+        month.assetsByDay.keys.sorted().flatMap { day in month.assetsByDay[day] ?? [] }
+    }
+
+    private func weekdaySymbols() -> [String] {
+        var df = DateFormatter(); df.locale = Locale.current
+        // Start from calendar.firstWeekday to match layout
+        let symbols = df.shortWeekdaySymbols ?? ["日","月","火","水","木","金","土"]
+        let start = Calendar.current.firstWeekday - 1 // convert to 0-based
+        return Array(symbols[start...] + symbols[..<start])
     }
 }
