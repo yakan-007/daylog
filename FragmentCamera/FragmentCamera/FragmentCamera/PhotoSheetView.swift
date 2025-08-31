@@ -129,7 +129,7 @@ struct PhotoSheetView: View {
 
     var body: some View {
         NavigationView {
-            TabView(selection: Binding(get: { selectedTab }, set: { selectedTab = $0 })) {
+            TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
                 // Days/List
                 ScrollView {
                     ForEach(viewModel.groupedVideos) { group in
