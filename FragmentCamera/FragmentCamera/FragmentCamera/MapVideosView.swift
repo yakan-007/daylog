@@ -114,8 +114,11 @@ struct MapVideosView: View {
         .onReceive(locator.$lastCoordinate.compactMap { $0 }) { coord in
             cameraPosition = .region(MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)))
         }
-        .onChange(of: cameraPosition) { _, newValue in
-            if case let .region(r) = newValue { currentRegion = r }
+        .onChange(of: cameraPosition) { newValue in
+            switch newValue {
+            case .region(let r): currentRegion = r
+            default: break
+            }
         }
     }
 }
