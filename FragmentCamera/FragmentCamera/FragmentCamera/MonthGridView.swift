@@ -17,6 +17,7 @@ struct DayCellView: View {
     @ObservedObject var viewModel: PhotoSheetViewModel
     let isSelecting: Bool
     @Binding var selectedIds: Set<String>
+    let cellSize: CGFloat
 
     private var isSelectedAll: Bool {
         guard !assets.isEmpty else { return false }
@@ -35,7 +36,7 @@ struct DayCellView: View {
 
             if let day = day, let rep = assets.first {
                 // Thumbnail
-                VideoThumbnailView(asset: rep, viewModel: viewModel)
+                VideoThumbnailView(asset: rep, viewModel: viewModel, size: cellSize)
 
                 // Date label (top-left)
                 VStack {
@@ -102,7 +103,7 @@ struct DayCellView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } // else leading empty cell
         }
-        .frame(width: 100, height: 100)
+        .frame(width: cellSize, height: cellSize)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
@@ -116,49 +117,55 @@ struct MonthGridView: View {
     var isSelecting: Bool
     @Binding var selectedIds: Set<String>
 
-    private let columns: [GridItem] = Array(repeating: GridItem(.fixed(100), spacing: 2, alignment: .center), count: 7)
-
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(months) { month in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("\(month.year)年\(month.month)月")
-                                .font(.headline)
-                                .fontWeight(.bold)
-                            Spacer()
-                        }
-                        LazyVGrid(columns: columns, spacing: 2) {
-                            // Leading empty days
-                            ForEach(0..<month.leadingEmpty, id: \.self) { _ in
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color.clear)
-                                    .frame(width: 100, height: 100)
+        GeometryReader { proxy in
+            let spacing: CGFloat = 2
+            let columnsCount = 7
+            let totalSpacing = spacing * CGFloat(columnsCount - 1)
+            let horizontalPadding: CGFloat = 16
+            let available = max(0, proxy.size.width - horizontalPadding - totalSpacing)
+            let cell = floor(available / CGFloat(columnsCount))
+
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(months) { month in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("\(month.year)年\(month.month)月")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                Spacer()
                             }
-                            // Days of month
-                            ForEach(1...month.numberOfDays, id: \.self) { d in
-                                let assets = month.assetsByDay[d] ?? []
-                                DayCellView(day: d, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds)
-                                    .onTapGesture {
-                                        if isSelecting {
-                                            toggleSelection(for: assets)
-                                        } else {
-                                            onTapDay(sortedOldest(assets))
+                            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: spacing, alignment: .center), count: columnsCount), spacing: spacing) {
+                                // Leading empty days
+                                ForEach(0..<month.leadingEmpty, id: \.self) { _ in
+                                    Color.clear
+                                        .frame(width: cell, height: cell)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                // Days of month
+                                ForEach(1...month.numberOfDays, id: \.self) { d in
+                                    let assets = month.assetsByDay[d] ?? []
+                                    DayCellView(day: d, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds, cellSize: cell)
+                                        .onTapGesture {
+                                            if isSelecting {
+                                                toggleSelection(for: assets)
+                                            } else {
+                                                onTapDay(sortedOldest(assets))
+                                            }
                                         }
-                                    }
-                                    .contextMenu {
-                                        if !assets.isEmpty {
-                                            Button { onTapDay(sortedOldest(assets)) } label: { Label("再生", systemImage: "play.fill") }
-                                            if let onShareDay = onShareDay { Button { onShareDay(sortedOldest(assets)) } label: { Label("共有", systemImage: "square.and.arrow.up") } }
-                                            if let onDeleteDay = onDeleteDay { Button(role: .destructive) { onDeleteDay(assets) } label: { Label("削除", systemImage: "trash") } }
+                                        .contextMenu {
+                                            if !assets.isEmpty {
+                                                Button { onTapDay(sortedOldest(assets)) } label: { Label("再生", systemImage: "play.fill") }
+                                                if let onShareDay = onShareDay { Button { onShareDay(sortedOldest(assets)) } label: { Label("共有", systemImage: "square.and.arrow.up") } }
+                                                if let onDeleteDay = onDeleteDay { Button(role: .destructive) { onDeleteDay(assets) } label: { Label("削除", systemImage: "trash") } }
+                                            }
                                         }
-                                    }
+                                }
                             }
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, horizontalPadding / 2)
                     }
-                    .padding(.horizontal, 8)
                 }
             }
         }
@@ -179,4 +186,3 @@ struct MonthGridView: View {
         }
     }
 }
-

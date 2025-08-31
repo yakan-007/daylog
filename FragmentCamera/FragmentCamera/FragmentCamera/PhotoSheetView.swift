@@ -7,10 +7,12 @@ struct VideoThumbnailView: View {
     let asset: PHAsset
     @ObservedObject var viewModel: PhotoSheetViewModel
     @State private var thumbnail: UIImage? = nil
+    let size: CGFloat?
     
-    init(asset: PHAsset, viewModel: PhotoSheetViewModel) {
+    init(asset: PHAsset, viewModel: PhotoSheetViewModel, size: CGFloat? = nil) {
         self.asset = asset
         self.viewModel = viewModel
+        self.size = size
     }
 
     var body: some View {
@@ -29,7 +31,7 @@ struct VideoThumbnailView: View {
                     .padding(6)
             }
         }
-        .frame(width: 100, height: 100)
+        .frame(width: size ?? 100, height: size ?? 100)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
@@ -311,10 +313,8 @@ struct DaySectionView: View {
                             if isSelecting && selectedIds.contains(asset.localIdentifier) {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .stroke(Color.accentColor, lineWidth: 3)
-                                    .frame(width: 100, height: 100)
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(Color.accentColor.opacity(0.15))
-                                    .frame(width: 100, height: 100)
                             }
 
                             // Top-right indicator: play when not selecting, check/circle when selecting
