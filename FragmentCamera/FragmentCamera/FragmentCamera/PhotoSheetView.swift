@@ -120,59 +120,66 @@ struct PhotoSheetView: View {
     @State private var assetListToPlay: IdentifiableAssetsWithIndex? = nil
     @State private var isSelecting: Bool = false
     @State private var selectedIds: Set<String> = []
-    enum ViewMode: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー"; case map = "マップ" }
-    @AppStorage("photoViewMode") private var viewModeRaw: String = ViewMode.list.rawValue
-    private var viewModeValue: ViewMode { ViewMode(rawValue: viewModeRaw) ?? .list }
+    enum Tab: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー"; case map = "マップ" }
+    @AppStorage("photoTab") private var selectedTabRaw: String = Tab.list.rawValue
+    private var selectedTab: Tab {
+        get { Tab(rawValue: selectedTabRaw) ?? .list }
+        set { selectedTabRaw = newValue.rawValue }
+    }
 
     var body: some View {
         NavigationView {
-            Group {
-                if viewModeValue == .list {
-                    ScrollView {
-                        ForEach(viewModel.groupedVideos) { group in
-                            DaySectionView(
-                                group: group,
-                                viewModel: viewModel,
-                                onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
-                                onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
-                                onTapAsset: { asset in
-                                    if let idx = group.assets.firstIndex(of: asset) {
-                                        self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
-                                    } else {
-                                        self.assetToPlay = IdentifiableAsset(asset: asset)
-                                    }
-                                },
-                                onDeleteAsset: { asset in
-                                    self.assetToDelete = IdentifiableAsset(asset: asset)
-                                    self.showDeleteDialog = true
-                        },
-                                isSelecting: $isSelecting,
-                                selectedIds: $selectedIds
-                            )
-                        }
+            TabView(selection: Binding(get: { selectedTab }, set: { selectedTab = $0 })) {
+                // Days/List
+                ScrollView {
+                    ForEach(viewModel.groupedVideos) { group in
+                        DaySectionView(
+                            group: group,
+                            viewModel: viewModel,
+                            onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                            onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
+                            onTapAsset: { asset in
+                                if let idx = group.assets.firstIndex(of: asset) {
+                                    self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
+                                } else {
+                                    self.assetToPlay = IdentifiableAsset(asset: asset)
+                                }
+                            },
+                            onDeleteAsset: { asset in
+                                self.assetToDelete = IdentifiableAsset(asset: asset)
+                                self.showDeleteDialog = true
+                            },
+                            isSelecting: $isSelecting,
+                            selectedIds: $selectedIds
+                        )
                     }
-                } else if viewModeValue == .calendar {
-                    MonthGridView(
-                        months: viewModel.buildMonthSections(),
-                        viewModel: viewModel,
-                        onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
-                        onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
-                        onDeleteDay: { assets in self.delete(assets: assets) },
-                        isSelecting: $isSelecting,
-                        selectedIds: $selectedIds
-                    )
-                } else { // map
-                    MapVideosView(viewModel: viewModel)
                 }
+                .tabItem { Label("リスト", systemImage: "list.bullet") }
+                .tag(Tab.list)
+
+                // Calendar
+                MonthGridView(
+                    months: viewModel.buildMonthSections(),
+                    viewModel: viewModel,
+                    onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                    onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
+                    onDeleteDay: { assets in self.delete(assets: assets) },
+                    isSelecting: $isSelecting,
+                    selectedIds: $selectedIds
+                )
+                .tabItem { Label("カレンダー", systemImage: "calendar") }
+                .tag(Tab.calendar)
+
+                // Map
+                MapVideosView(viewModel: viewModel)
+                    .tabItem { Label("マップ", systemImage: "map") }
+                    .tag(Tab.map)
             }
-            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewModeValue == .list ? "動画" : (viewModeValue == .calendar ? "カレンダー" : "マップ")))
+            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : titleForTab(selectedTab))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { dismiss() }) { Image(systemName: "xmark.circle.fill") }
-                }
-                ToolbarItem(placement: .principal) {
-                    EmptyView() // keep center clean to avoid layout jumps
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
@@ -207,15 +214,6 @@ struct PhotoSheetView: View {
                             // Exit selection
                             Button(action: { isSelecting = false; selectedIds.removeAll() }) { Image(systemName: "checkmark.circle") }
                         } else {
-                            // View mode menu (list/calendar/map)
-                            Menu {
-                                Button { viewModeRaw = ViewMode.list.rawValue } label: { Label("リスト", systemImage: "list.bullet") }
-                                Button { viewModeRaw = ViewMode.calendar.rawValue } label: { Label("カレンダー", systemImage: "calendar") }
-                                Button { viewModeRaw = ViewMode.map.rawValue } label: { Label("マップ", systemImage: "map") }
-                            } label: {
-                                Image(systemName: modeIconName(viewModeValue))
-                            }
-                            // Enter selection
                             Button(action: { isSelecting = true }) { Image(systemName: "checkmark.circle") }
                         }
                     }
@@ -271,13 +269,7 @@ struct PhotoSheetView: View {
         }
     }
 
-    private func modeIconName(_ mode: ViewMode) -> String {
-        switch mode {
-        case .list: return "list.bullet"
-        case .calendar: return "calendar"
-        case .map: return "map"
-        }
-    }
+    private func titleForTab(_ tab: Tab) -> String { tab == .list ? "動画" : (tab == .calendar ? "カレンダー" : "マップ") }
 
     private func findAsset(by id: String) -> PHAsset? {
         for group in viewModel.groupedVideos {
