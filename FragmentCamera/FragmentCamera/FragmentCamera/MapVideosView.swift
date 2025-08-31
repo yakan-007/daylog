@@ -35,8 +35,7 @@ struct MapVideosView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottom) {
                 Map(position: $cameraPosition) {
                     ForEach(dayClusters) { cl in
                         Annotation("", coordinate: cl.coordinate) {
@@ -81,23 +80,6 @@ struct MapVideosView: View {
                 .background(LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(0.05)], startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea(edges: .bottom))
             }
-            .navigationTitle("マップ")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button(action: { isSatellite.toggle() }) {
-                            Image(systemName: isSatellite ? "globe.americas.fill" : "map")
-                                .font(.system(size: 18, weight: .semibold))
-                        }
-                        Button(action: { if let r = currentRegion { cameraPosition = .region(r) } }) {
-                            Image(systemName: "location.circle")
-                                .font(.system(size: 18, weight: .semibold))
-                        }
-                    }
-                }
-            }
-        }
         .sheet(item: $selected) { item in PlayerView(asset: item.asset) }
         .sheet(item: Binding(get: {
             selectedDay
