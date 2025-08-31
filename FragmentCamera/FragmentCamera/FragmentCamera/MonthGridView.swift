@@ -197,34 +197,45 @@ struct MonthGridView: View {
                                     .font(.headline)
                                     .fontWeight(.bold)
                                 Spacer()
-                                HStack(spacing: 10) {
-                                    if let onPlayMonth = onPlayMonth {
-                                        Button(action: { onPlayMonth(sortedOldest(allAssets(in: month))) }) {
-                                            Label("再生", systemImage: "play.fill")
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                                if useAdaptive {
+                                    // Compact width: collapse into menu to save space
+                                    Menu {
+                                        if let onPlayMonth = onPlayMonth { Button { onPlayMonth(sortedOldest(allAssets(in: month))) } label: { Label("この月を再生", systemImage: "play.fill") } }
+                                        if let onShareMonth = onShareMonth { Button { onShareMonth(sortedOldest(allAssets(in: month))) } label: { Label("この月を共有", systemImage: "square.and.arrow.up") } }
+                                        if let onDeleteMonth = onDeleteMonth { Button(role: .destructive) { onDeleteMonth(allAssets(in: month)) } label: { Label("この月を削除", systemImage: "trash") } }
+                                    } label: {
+                                        Image(systemName: "ellipsis.circle")
                                     }
-                                    if let onShareMonth = onShareMonth {
-                                        Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
-                                            Label("共有", systemImage: "square.and.arrow.up")
+                                } else {
+                                    HStack(spacing: 10) {
+                                        if let onPlayMonth = onPlayMonth {
+                                            Button(action: { onPlayMonth(sortedOldest(allAssets(in: month))) }) {
+                                                Label("再生", systemImage: "play.fill")
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
                                         }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-                                    if let onDeleteMonth = onDeleteMonth {
-                                        Button(role: .destructive, action: { onDeleteMonth(allAssets(in: month)) }) {
-                                            Label("削除", systemImage: "trash")
+                                        if let onShareMonth = onShareMonth {
+                                            Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
+                                                Label("共有", systemImage: "square.and.arrow.up")
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
                                         }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                                        if let onDeleteMonth = onDeleteMonth {
+                                            Button(role: .destructive, action: { onDeleteMonth(allAssets(in: month)) }) {
+                                                Label("削除", systemImage: "trash")
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
+                                        }
                                     }
                                 }
                             }
                             if useAdaptive {
                                 // Adaptive grid: only existing days, bigger tiles, vertical scroll
                                 let days = month.assetsByDay.keys.sorted()
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: spacing)], spacing: spacing) {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: spacing)], spacing: spacing) {
                                     ForEach(days, id: \.self) { d in
                                         let assets = month.assetsByDay[d] ?? []
                                         let date = Calendar.current.date(byAdding: .day, value: d - 1, to: month.firstDate)!

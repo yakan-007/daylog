@@ -156,6 +156,7 @@ struct PhotoSheetView: View {
                         )
                     }
                 }
+                .refreshable { viewModel.fetchAllVideos() }
                 .tabItem { Label("リスト", systemImage: "list.bullet") }
                 .tag(Tab.list)
 
@@ -175,6 +176,7 @@ struct PhotoSheetView: View {
                     isSelecting: $isSelecting,
                     selectedIds: $selectedIds
                 )
+                .refreshable { viewModel.fetchAllVideos() }
                 .tabItem { Label("カレンダー", systemImage: "calendar") }
                 .tag(Tab.calendar)
 
