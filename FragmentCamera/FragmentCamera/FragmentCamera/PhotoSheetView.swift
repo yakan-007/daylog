@@ -132,8 +132,7 @@ struct PhotoSheetView: View {
 
     var body: some View {
         NavigationView {
-            ZStack(alignment: .bottomTrailing) {
-                TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
+            TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
                 // Days/List
                 ScrollView {
                     ForEach(viewModel.groupedVideos) { group in
@@ -186,22 +185,6 @@ struct PhotoSheetView: View {
                 MapVideosView(viewModel: viewModel)
                     .tabItem { Label("マップ", systemImage: "map") }
                     .tag(Tab.map)
-                }
-
-                // Floating action button (return to camera)
-                if !isSelecting {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 52, height: 52)
-                            .background(Color.accentColor)
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
-                    }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 24)
-                }
             }
             .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : titleForTab(selectedTab))
             .navigationBarTitleDisplayMode(.inline)
