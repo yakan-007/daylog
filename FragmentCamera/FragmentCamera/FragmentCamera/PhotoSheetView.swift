@@ -90,16 +90,16 @@ struct DateHeaderView: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(weekdayString(from: date))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.primary)
                 Text(dayTitle(from: date))
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
             }
-            Spacer(minLength: 8)
-            HStack(spacing: 6) {
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
                 if assets.count > 1 { chip(text: "\(assets.count)") }
                 if let dur = totalDurationLabel() { chip(text: dur) }
             }
@@ -123,20 +123,20 @@ struct DateHeaderView: View {
                 }
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-        .padding(.horizontal, 8)
+        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+        .padding(.horizontal, 10)
     }
 
     private func chip(text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
     }

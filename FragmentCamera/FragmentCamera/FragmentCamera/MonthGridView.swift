@@ -192,13 +192,12 @@ struct MonthGridView: View {
                 LazyVStack(spacing: 16) {
                     ForEach(months) { month in
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .center, spacing: 8) {
+                            HStack(alignment: .center, spacing: 12) {
                                 Text("\(month.year)年\(month.month)月")
-                                    .font(.headline)
-                                    .fontWeight(.bold)
-                                Spacer(minLength: 8)
+                                    .font(.system(size: 20, weight: .bold))
+                                Spacer(minLength: 12)
                                 // Chips: count and total duration for month
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     let assets = allAssets(in: month)
                                     if assets.count > 1 { chip(text: "\(assets.count)") }
                                     if let dur = totalDurationLabel(for: assets) { chip(text: dur) }
@@ -238,12 +237,12 @@ struct MonthGridView: View {
                                     }
                                 }
                             }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 14)
                             .background(.ultraThinMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-                            .padding(.horizontal, 8)
+                            .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+                            .padding(.horizontal, 10)
                             if useAdaptive {
                                 // Adaptive grid: only existing days, bigger tiles, vertical scroll
                                 let days = month.assetsByDay.keys.sorted()
@@ -380,10 +379,10 @@ struct MonthGridView: View {
 
     private func chip(text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
     }
