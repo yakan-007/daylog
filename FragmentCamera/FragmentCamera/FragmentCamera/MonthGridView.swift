@@ -192,11 +192,17 @@ struct MonthGridView: View {
                 LazyVStack(spacing: 16) {
                     ForEach(months) { month in
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack {
+                            HStack(alignment: .center, spacing: 8) {
                                 Text("\(month.year)年\(month.month)月")
                                     .font(.headline)
                                     .fontWeight(.bold)
-                                Spacer()
+                                Spacer(minLength: 8)
+                                // Chips: count and total duration for month
+                                HStack(spacing: 6) {
+                                    let assets = allAssets(in: month)
+                                    if assets.count > 1 { chip(text: "\(assets.count)") }
+                                    if let dur = totalDurationLabel(for: assets) { chip(text: dur) }
+                                }
                                 if useAdaptive {
                                     // Compact width: collapse into menu to save space
                                     Menu {
@@ -232,6 +238,12 @@ struct MonthGridView: View {
                                     }
                                 }
                             }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+                            .padding(.horizontal, 8)
                             if useAdaptive {
                                 // Adaptive grid: only existing days, bigger tiles, vertical scroll
                                 let days = month.assetsByDay.keys.sorted()
@@ -357,5 +369,22 @@ struct MonthGridView: View {
         let symbols = df.shortWeekdaySymbols ?? ["日","月","火","水","木","金","土"]
         let start = Calendar.current.firstWeekday - 1 // convert to 0-based
         return Array(symbols[start...] + symbols[..<start])
+    }
+
+    private func totalDurationLabel(for assets: [PHAsset]) -> String? {
+        let sec = Int(assets.reduce(0.0) { $0 + $1.duration }.rounded())
+        if sec <= 0 { return nil }
+        let h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
+    private func chip(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
     }
 }
