@@ -168,6 +168,10 @@ struct PhotoSheetView: View {
                     onDeleteDay: { assets in self.delete(assets: assets) },
                     onPlayMonth: { assets in self.playAllAssets = sortOldestFirst(assets) },
                     onShareMonth: { assets in self.shareAssets = sortOldestFirst(assets) },
+                    onDeleteMonth: { assets in
+                        self.bulkDeleteAssets = assets
+                        self.showBulkDeleteDialog = true
+                    },
                     isSelecting: $isSelecting,
                     selectedIds: $selectedIds
                 )

@@ -179,6 +179,7 @@ struct MonthGridView: View {
     var onDeleteDay: (([PHAsset]) -> Void)? = nil
     var onPlayMonth: (([PHAsset]) -> Void)? = nil
     var onShareMonth: (([PHAsset]) -> Void)? = nil
+    var onDeleteMonth: (([PHAsset]) -> Void)? = nil
     @Binding var isSelecting: Bool
     @Binding var selectedIds: Set<String>
     @Environment(\.horizontalSizeClass) private var hSize
@@ -207,6 +208,13 @@ struct MonthGridView: View {
                                     if let onShareMonth = onShareMonth {
                                         Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
                                             Label("共有", systemImage: "square.and.arrow.up")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                    if let onDeleteMonth = onDeleteMonth {
+                                        Button(role: .destructive, action: { onDeleteMonth(allAssets(in: month)) }) {
+                                            Label("削除", systemImage: "trash")
                                         }
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
