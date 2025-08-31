@@ -177,7 +177,7 @@ struct MonthGridView: View {
     var onTapDay: ([PHAsset]) -> Void
     var onShareDay: (([PHAsset]) -> Void)? = nil
     var onDeleteDay: (([PHAsset]) -> Void)? = nil
-    var isSelecting: Bool
+    @Binding var isSelecting: Bool
     @Binding var selectedIds: Set<String>
     @Environment(\.horizontalSizeClass) private var hSize
 
@@ -204,6 +204,12 @@ struct MonthGridView: View {
                                         let date = Calendar.current.date(byAdding: .day, value: d - 1, to: month.firstDate)!
                                         DayCellView(date: date, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds)
                                             .onTapGesture { handleTap(assets) }
+                                            .onLongPressGesture(minimumDuration: 0.3) {
+                                                if !isSelecting {
+                                                    isSelecting = true
+                                                    toggleSelection(for: assets)
+                                                }
+                                            }
                                             .contextMenu { contextMenu(assets) }
                                     }
                                 }
@@ -229,6 +235,12 @@ struct MonthGridView: View {
                                         DayCellView(date: date, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds)
                                             .frame(width: cell)
                                             .onTapGesture { handleTap(assets) }
+                                            .onLongPressGesture(minimumDuration: 0.3) {
+                                                if !isSelecting {
+                                                    isSelecting = true
+                                                    toggleSelection(for: assets)
+                                                }
+                                            }
                                             .contextMenu { contextMenu(assets) }
                                     }
                                 }

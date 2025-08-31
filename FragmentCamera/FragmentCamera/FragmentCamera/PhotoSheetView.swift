@@ -122,12 +122,13 @@ struct PhotoSheetView: View {
     @State private var isSelecting: Bool = false
     @State private var selectedIds: Set<String> = []
     enum ViewMode: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー" }
-    @State private var viewMode: ViewMode = .list
+    @AppStorage("photoViewMode") private var viewModeRaw: String = ViewMode.list.rawValue
+    private var viewModeValue: ViewMode { ViewMode(rawValue: viewModeRaw) ?? .list }
 
     var body: some View {
         NavigationView {
             Group {
-                if viewMode == .list {
+                if viewModeValue == .list {
                     ScrollView {
                         ForEach(viewModel.groupedVideos) { group in
                             DaySectionView(
@@ -158,12 +159,12 @@ struct PhotoSheetView: View {
                         onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
                         onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
                         onDeleteDay: { assets in self.delete(assets: assets) },
-                        isSelecting: isSelecting,
+                        isSelecting: $isSelecting,
                         selectedIds: $selectedIds
                     )
                 }
             }
-            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewMode == .list ? "動画" : "カレンダー"))
+            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewModeValue == .list ? "動画" : "カレンダー"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -173,7 +174,7 @@ struct PhotoSheetView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Picker("モード", selection: $viewMode) {
+                    Picker("モード", selection: Binding(get: { viewModeValue }, set: { viewModeRaw = $0.rawValue })) {
                         ForEach(ViewMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
@@ -191,6 +192,14 @@ struct PhotoSheetView: View {
                                 .padding(.vertical, 4)
                                 .background(.ultraThinMaterial)
                                 .clipShape(Capsule())
+                            // Select all / clear
+                            Button {
+                                let target = allSelectableIds()
+                                let allSelected = target.isSubset(of: selectedIds)
+                                if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
+                            } label: {
+                                Image(systemName: allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle")
+                            }
                             Button {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                 if !assets.isEmpty { shareAssets = assets }
@@ -199,7 +208,8 @@ struct PhotoSheetView: View {
 
                             Button(role: .destructive) {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
-                                delete(assets: assets)
+                                self.bulkDeleteAssets = assets
+                                self.showBulkDeleteDialog = true
                             } label: { Image(systemName: "trash") }
                             .disabled(selectedIds.isEmpty)
                         } else {
@@ -245,6 +255,13 @@ struct PhotoSheetView: View {
             }
             Button("キャンセル", role: .cancel) { assetToDelete = nil }
         } message: { Text("この操作は取り消せません") }
+        .confirmationDialog(bulkDeleteTitle(), isPresented: $showBulkDeleteDialog) {
+            Button("削除", role: .destructive) {
+                delete(assets: bulkDeleteAssets)
+                bulkDeleteAssets = []
+            }
+            Button("キャンセル", role: .cancel) { bulkDeleteAssets = [] }
+        } message: { Text(bulkDeleteMessage()) }
     }
 
     private func sortOldestFirst(_ assets: [PHAsset]) -> [PHAsset] {
@@ -278,6 +295,24 @@ struct PhotoSheetView: View {
                 self.viewModel.fetchAllVideos()
             }
         }
+    }
+
+    private func allSelectableIds() -> Set<String> {
+        // Use all assets in groupedVideos (covers both list and calendar datasets)
+        let ids = viewModel.groupedVideos.flatMap { $0.assets }.map { $0.localIdentifier }
+        return Set(ids)
+    }
+
+    @State private var showBulkDeleteDialog: Bool = false
+    @State private var bulkDeleteAssets: [PHAsset] = []
+
+    private func bulkDeleteTitle() -> String { "選択した動画を削除しますか？" }
+    private func bulkDeleteMessage() -> String {
+        let count = bulkDeleteAssets.count
+        let total = Int(bulkDeleteAssets.reduce(0.0) { $0 + $1.duration }.rounded())
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        let dur = h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+        return "件数: \(count)  合計: \(dur)\nこの操作は取り消せません"
     }
 }
 
@@ -343,6 +378,12 @@ struct DaySectionView: View {
                                 Spacer()
                             }
                             .allowsHitTesting(false)
+                        }
+                    }
+                    .onLongPressGesture(minimumDuration: 0.3) {
+                        if !isSelecting {
+                            isSelecting = true
+                            selectedIds.insert(asset.localIdentifier)
                         }
                     }
                     .contextMenu {
