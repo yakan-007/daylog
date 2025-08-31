@@ -73,6 +73,7 @@ struct DateHeaderView: View {
     let assets: [PHAsset]
     var onPlayAll: (([PHAsset]) -> Void)? = nil
     var onShareAll: (([PHAsset]) -> Void)? = nil
+    @Environment(.horizontalSizeClass) private var hSize
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -89,26 +90,72 @@ struct DateHeaderView: View {
     }
 
     var body: some View {
-        HStack {
-            Text(dateFormatter.string(from: date))
-                .font(.headline)
-                .fontWeight(.bold)
-            Spacer()
-            Button(action: { onPlayAll?(assets) }) {
-                Image(systemName: "play.fill")
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(weekdayString(from: date))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(dayTitle(from: date))
+                    .font(.system(size: 16, weight: .bold))
             }
-            .padding(.trailing, 8)
-            Button(action: { onShareAll?(assets) }) {
-                Image(systemName: "square.and.arrow.up")
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                if assets.count > 1 { chip(text: "\(assets.count)") }
+                if let dur = totalDurationLabel() { chip(text: dur) }
+            }
+            if hSize == .compact {
+                Menu {
+                    if let onPlayAll = onPlayAll { Button { onPlayAll(assets) } label: { Label("この日を再生", systemImage: "play.fill") } }
+                    if let onShareAll = onShareAll { Button { onShareAll(assets) } label: { Label("この日を共有", systemImage: "square.and.arrow.up") } }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            } else {
+                if let onPlayAll = onPlayAll {
+                    Button(action: { onPlayAll(assets) }) { Label("再生", systemImage: "play.fill") }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                if let onShareAll = onShareAll {
+                    Button(action: { onShareAll(assets) }) { Label("共有", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
             }
         }
         .padding(.vertical, 8)
         .padding(.horizontal)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
         .padding(.horizontal, 8)
     }
+
+    private func chip(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
+    }
+
+    private func weekdayString(from date: Date) -> String {
+        let df = DateFormatter(); df.locale = Locale.current; df.dateFormat = "EEE"
+        return df.string(from: date)
+    }
+    private func dayTitle(from date: Date) -> String {
+        let df = DateFormatter(); df.locale = Locale.current; df.dateFormat = "yyyy/MM/dd"
+        return df.string(from: date)
+    }
+    private func totalDurationLabel() -> String? {
+        let sec = Int(assets.reduce(0.0) { $0 + $1.duration }.rounded())
+        if sec <= 0 { return nil }
+        let h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+}
 }
 
 struct PhotoSheetView: View {
