@@ -11,6 +11,7 @@ struct DayVideoGroup: Identifiable, Hashable {
 
 class PhotoSheetViewModel: ObservableObject {
     @Published var groupedVideos: [DayVideoGroup] = []
+    private let calendar = Calendar.current
 
     func fetchAllVideos() {
         // 1. Find the "daylog" album
@@ -98,5 +99,52 @@ class PhotoSheetViewModel: ObservableObject {
                 completion(success)
             }
         }
+    }
+
+    // Build month sections from grouped days
+    func buildMonthSections() -> [MonthSection] {
+        // Map monthId -> [Date: [PHAsset]]
+        var months: [String: [Date: [PHAsset]]] = [:]
+        for group in groupedVideos {
+            let comps = calendar.dateComponents([.year, .month], from: group.date)
+            guard let year = comps.year, let month = comps.month, let firstDay = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else { continue }
+            let key = String(format: "%04d-%02d", year, month)
+            var map = months[key] ?? [:]
+            map[group.date] = group.assets
+            months[key] = map
+        }
+
+        // Build MonthSection list
+        var sections: [MonthSection] = []
+        for (key, dayMap) in months {
+            let parts = key.split(separator: "-")
+            guard parts.count == 2, let year = Int(parts[0]), let month = Int(parts[1]) else { continue }
+            guard let firstDate = calendar.date(from: DateComponents(year: year, month: month, day: 1)), let range = calendar.range(of: .day, in: .month, for: firstDate) else { continue }
+            let numberOfDays = range.count
+            let weekday = calendar.component(.weekday, from: firstDate) // 1..7 (1 = Sunday)
+            let firstWeekday = calendar.firstWeekday
+            let leadingEmpty = (weekday - firstWeekday + 7) % 7
+
+            // Convert dayMap keyed by startOfDay(Date) to [Int: [PHAsset]]
+            var assetsByDay: [Int: [PHAsset]] = [:]
+            for (date, assets) in dayMap {
+                let comps = calendar.dateComponents([.day], from: date)
+                if let day = comps.day { assetsByDay[day] = assets }
+            }
+
+            let section = MonthSection(
+                id: key,
+                year: year,
+                month: month,
+                firstDate: firstDate,
+                numberOfDays: numberOfDays,
+                leadingEmpty: leadingEmpty,
+                assetsByDay: assetsByDay
+            )
+            sections.append(section)
+        }
+        // Sort by firstDate desc (newest month first)
+        sections.sort { $0.firstDate > $1.firstDate }
+        return sections
     }
 }

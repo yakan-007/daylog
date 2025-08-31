@@ -117,33 +117,49 @@ struct PhotoSheetView: View {
     @State private var assetListToPlay: IdentifiableAssetsWithIndex? = nil
     @State private var isSelecting: Bool = false
     @State private var selectedIds: Set<String> = []
+    enum ViewMode: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー" }
+    @State private var viewMode: ViewMode = .list
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                ForEach(viewModel.groupedVideos) { group in
-                    DaySectionView(
-                        group: group,
+            Group {
+                if viewMode == .list {
+                    ScrollView {
+                        ForEach(viewModel.groupedVideos) { group in
+                            DaySectionView(
+                                group: group,
+                                viewModel: viewModel,
+                                onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                                onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
+                                onTapAsset: { asset in
+                                    if let idx = group.assets.firstIndex(of: asset) {
+                                        self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
+                                    } else {
+                                        self.assetToPlay = IdentifiableAsset(asset: asset)
+                                    }
+                                },
+                                onDeleteAsset: { asset in
+                                    self.assetToDelete = IdentifiableAsset(asset: asset)
+                                    self.showDeleteDialog = true
+                                },
+                                isSelecting: isSelecting,
+                                selectedIds: $selectedIds
+                            )
+                        }
+                    }
+                } else {
+                    MonthGridView(
+                        months: viewModel.buildMonthSections(),
                         viewModel: viewModel,
-                        onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
-                        onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
-                        onTapAsset: { asset in
-                            if let idx = group.assets.firstIndex(of: asset) {
-                                self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
-                            } else {
-                                self.assetToPlay = IdentifiableAsset(asset: asset)
-                            }
-                        },
-                        onDeleteAsset: { asset in
-                            self.assetToDelete = IdentifiableAsset(asset: asset)
-                            self.showDeleteDialog = true
-                        },
+                        onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                        onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
+                        onDeleteDay: { assets in self.delete(assets: assets) },
                         isSelecting: isSelecting,
                         selectedIds: $selectedIds
                     )
                 }
             }
-            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : "動画")
+            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewMode == .list ? "動画" : "カレンダー"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -151,6 +167,15 @@ struct PhotoSheetView: View {
                         isSelecting.toggle()
                         if !isSelecting { selectedIds.removeAll() }
                     }
+                }
+                ToolbarItem(placement: .principal) {
+                    Picker("モード", selection: $viewMode) {
+                        ForEach(ViewMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
