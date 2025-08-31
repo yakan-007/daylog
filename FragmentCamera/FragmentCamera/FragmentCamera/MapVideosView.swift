@@ -115,10 +115,7 @@ struct MapVideosView: View {
             cameraPosition = .region(MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)))
         }
         .onChange(of: cameraPosition) { newValue in
-            switch newValue {
-            case .region(let r): currentRegion = r
-            default: break
-            }
+            if case MapCameraPosition.region(let r) = newValue { currentRegion = r }
         }
     }
 }
