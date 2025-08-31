@@ -43,7 +43,9 @@ struct MapVideosView: View {
                             Button(action: {
                                 // Zoom into this day's region
                                 let span = MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
-                                cameraPosition = .region(MKCoordinateRegion(center: cl.coordinate, span: span))
+                                let region = MKCoordinateRegion(center: cl.coordinate, span: span)
+                                cameraPosition = .region(region)
+                                currentRegion = region
                             }) {
                                 ZStack {
                                     Image(systemName: "mappin.circle.fill")
@@ -106,16 +108,17 @@ struct MapVideosView: View {
         }
         .onAppear {
             if let first = dayClusters.first {
-                cameraPosition = .region(MKCoordinateRegion(center: first.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)))
+                let region = MKCoordinateRegion(center: first.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2))
+                cameraPosition = .region(region)
+                currentRegion = region
             } else {
                 locator.requestCurrentLocation()
             }
         }
         .onReceive(locator.$lastCoordinate.compactMap { $0 }) { coord in
-            cameraPosition = .region(MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)))
-        }
-        .onChange(of: cameraPosition) { newValue in
-            if case .region(let region) = newValue { currentRegion = region }
+            let region = MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2))
+            cameraPosition = .region(region)
+            currentRegion = region
         }
     }
 }
