@@ -147,3 +147,7 @@ private func contains(_ region: MKCoordinateRegion, _ coordinate: CLLocationCoor
 }
 
 // DayCard removed (simplified map)
+
+private func sortedOldest(_ assets: [PHAsset]) -> [PHAsset] {
+    assets.sorted { (a, b) in (a.creationDate ?? .distantPast) < (b.creationDate ?? .distantPast) }
+}
