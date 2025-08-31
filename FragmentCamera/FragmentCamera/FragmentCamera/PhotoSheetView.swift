@@ -146,8 +146,8 @@ struct PhotoSheetView: View {
                                 onDeleteAsset: { asset in
                                     self.assetToDelete = IdentifiableAsset(asset: asset)
                                     self.showDeleteDialog = true
-                                },
-                                isSelecting: isSelecting,
+                        },
+                                isSelecting: $isSelecting,
                                 selectedIds: $selectedIds
                             )
                         }
@@ -323,7 +323,7 @@ struct DaySectionView: View {
     var onShareAll: ([PHAsset]) -> Void
     var onTapAsset: (PHAsset) -> Void
     var onDeleteAsset: (PHAsset) -> Void
-    var isSelecting: Bool = false
+    @Binding var isSelecting: Bool
     @Binding var selectedIds: Set<String>
 
     var body: some View {

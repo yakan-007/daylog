@@ -107,7 +107,7 @@ class PhotoSheetViewModel: ObservableObject {
         var months: [String: [Date: [PHAsset]]] = [:]
         for group in groupedVideos {
             let comps = calendar.dateComponents([.year, .month], from: group.date)
-            guard let year = comps.year, let month = comps.month, let firstDay = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else { continue }
+            guard let year = comps.year, let month = comps.month, calendar.date(from: DateComponents(year: year, month: month, day: 1)) != nil else { continue }
             let key = String(format: "%04d-%02d", year, month)
             var map = months[key] ?? [:]
             map[group.date] = group.assets
