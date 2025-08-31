@@ -113,7 +113,6 @@ struct PhotoSheetView: View {
     @StateObject private var viewModel = PhotoSheetViewModel()
     @Environment(\.dismiss) var dismiss
     @State private var assetToPlay: IdentifiableAsset? = nil
-    @State private var showMap = false
     @State private var playAllAssets: [PHAsset]? = nil
     @State private var shareAssets: [PHAsset]? = nil
     @State private var assetToDelete: IdentifiableAsset? = nil
@@ -121,7 +120,7 @@ struct PhotoSheetView: View {
     @State private var assetListToPlay: IdentifiableAssetsWithIndex? = nil
     @State private var isSelecting: Bool = false
     @State private var selectedIds: Set<String> = []
-    enum ViewMode: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー" }
+    enum ViewMode: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー"; case map = "マップ" }
     @AppStorage("photoViewMode") private var viewModeRaw: String = ViewMode.list.rawValue
     private var viewModeValue: ViewMode { ViewMode(rawValue: viewModeRaw) ?? .list }
 
@@ -152,7 +151,7 @@ struct PhotoSheetView: View {
                             )
                         }
                     }
-                } else {
+                } else if viewModeValue == .calendar {
                     MonthGridView(
                         months: viewModel.buildMonthSections(),
                         viewModel: viewModel,
@@ -162,25 +161,18 @@ struct PhotoSheetView: View {
                         isSelecting: $isSelecting,
                         selectedIds: $selectedIds
                     )
+                } else { // map
+                    MapVideosView(viewModel: viewModel)
                 }
             }
-            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewModeValue == .list ? "動画" : "カレンダー"))
+            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : (viewModeValue == .list ? "動画" : (viewModeValue == .calendar ? "カレンダー" : "マップ")))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(isSelecting ? "完了" : "選択") {
-                        isSelecting.toggle()
-                        if !isSelecting { selectedIds.removeAll() }
-                    }
+                    Button(action: { dismiss() }) { Image(systemName: "xmark.circle.fill") }
                 }
                 ToolbarItem(placement: .principal) {
-                    Picker("モード", selection: Binding(get: { viewModeValue }, set: { viewModeRaw = $0.rawValue })) {
-                        ForEach(ViewMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
+                    EmptyView() // keep center clean to avoid layout jumps
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
@@ -212,9 +204,19 @@ struct PhotoSheetView: View {
                                 self.showBulkDeleteDialog = true
                             } label: { Image(systemName: "trash") }
                             .disabled(selectedIds.isEmpty)
+                            // Exit selection
+                            Button(action: { isSelecting = false; selectedIds.removeAll() }) { Image(systemName: "checkmark.circle") }
                         } else {
-                            Button { showMap = true } label: { Image(systemName: "map") }
-                            Button("閉じる") { dismiss() }
+                            // View mode menu (list/calendar/map)
+                            Menu {
+                                Button { viewModeRaw = ViewMode.list.rawValue } label: { Label("リスト", systemImage: "list.bullet") }
+                                Button { viewModeRaw = ViewMode.calendar.rawValue } label: { Label("カレンダー", systemImage: "calendar") }
+                                Button { viewModeRaw = ViewMode.map.rawValue } label: { Label("マップ", systemImage: "map") }
+                            } label: {
+                                Image(systemName: modeIconName(viewModeValue))
+                            }
+                            // Enter selection
+                            Button(action: { isSelecting = true }) { Image(systemName: "checkmark.circle") }
                         }
                     }
                 }
@@ -225,9 +227,6 @@ struct PhotoSheetView: View {
         }
         .sheet(item: $assetToPlay) { identifiableAsset in
             PlayerView(asset: identifiableAsset.asset)
-        }
-        .sheet(isPresented: $showMap) {
-            MapVideosView(viewModel: viewModel)
         }
         .sheet(item: Binding(get: {
             playAllAssets.map { IdentifiableAssets(assets: $0) }
@@ -269,6 +268,14 @@ struct PhotoSheetView: View {
             let ad = a.creationDate ?? .distantPast
             let bd = b.creationDate ?? .distantPast
             return ad < bd
+        }
+    }
+
+    private func modeIconName(_ mode: ViewMode) -> String {
+        switch mode {
+        case .list: return "list.bullet"
+        case .calendar: return "calendar"
+        case .map: return "map"
         }
     }
 
