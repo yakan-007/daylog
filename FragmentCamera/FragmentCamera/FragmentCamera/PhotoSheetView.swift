@@ -195,6 +195,7 @@ struct PhotoSheetView: View {
                                 .padding(.vertical, 4)
                                 .background(.ultraThinMaterial)
                                 .clipShape(Capsule())
+                                .contentTransition(.numericText())
                             // Select all / clear
                             Button {
                                 let target = allSelectableIds()
@@ -216,9 +217,17 @@ struct PhotoSheetView: View {
                             } label: { Image(systemName: "trash") }
                             .disabled(selectedIds.isEmpty)
                             // Exit selection
-                            Button(action: { isSelecting = false; selectedIds.removeAll() }) { Image(systemName: "checkmark.circle") }
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    isSelecting = false
+                                    selectedIds.removeAll()
+                                }
+                            }) { Image(systemName: "checkmark.circle") }
                         } else {
-                            Button(action: { isSelecting = true }) { Image(systemName: "checkmark.circle") }
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
+                                FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+                            }) { Image(systemName: "checkmark.circle") }
                         }
                     }
                 }
@@ -336,11 +345,14 @@ struct DaySectionView: View {
                 ForEach(group.assets, id: \.self) { asset in
                     Button(action: {
                         if isSelecting {
-                            if selectedIds.contains(asset.localIdentifier) {
-                                selectedIds.remove(asset.localIdentifier)
-                            } else {
-                                selectedIds.insert(asset.localIdentifier)
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                if selectedIds.contains(asset.localIdentifier) {
+                                    selectedIds.remove(asset.localIdentifier)
+                                } else {
+                                    selectedIds.insert(asset.localIdentifier)
+                                }
                             }
+                            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         } else {
                             onTapAsset(asset)
                         }
@@ -368,6 +380,7 @@ struct DaySectionView: View {
                                                 .font(.system(size: 18, weight: .bold))
                                                 .foregroundColor(selected ? .accentColor : .white)
                                                 .shadow(color: Color.black.opacity(0.25), radius: 1, x: 0, y: 1)
+                                                .symbolEffect(.bounce, value: selected)
                                         } else {
                                             Circle().fill(.ultraThinMaterial)
                                                 .frame(width: 22, height: 22)
@@ -385,8 +398,11 @@ struct DaySectionView: View {
                     }
                     .onLongPressGesture(minimumDuration: 0.3) {
                         if !isSelecting {
-                            isSelecting = true
-                            selectedIds.insert(asset.localIdentifier)
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                isSelecting = true
+                                selectedIds.insert(asset.localIdentifier)
+                            }
+                            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         }
                     }
                     .contextMenu {

@@ -224,8 +224,11 @@ struct MonthGridView: View {
                                             .onTapGesture { handleTap(assets) }
                                             .onLongPressGesture(minimumDuration: 0.3) {
                                                 if !isSelecting {
-                                                    isSelecting = true
-                                                    toggleSelection(for: assets)
+                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                                        isSelecting = true
+                                                        toggleSelection(for: assets)
+                                                    }
+                                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                                                 }
                                             }
                                             .contextMenu { contextMenu(assets) }
@@ -264,8 +267,11 @@ struct MonthGridView: View {
                                             .onTapGesture { handleTap(assets) }
                                             .onLongPressGesture(minimumDuration: 0.3) {
                                                 if !isSelecting {
-                                                    isSelecting = true
-                                                    toggleSelection(for: assets)
+                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                                        isSelecting = true
+                                                        toggleSelection(for: assets)
+                                                    }
+                                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                                                 }
                                             }
                                             .contextMenu { contextMenu(assets) }
@@ -292,7 +298,12 @@ struct MonthGridView: View {
     }
 
     private func handleTap(_ assets: [PHAsset]) {
-        if isSelecting { toggleSelection(for: assets) } else { onTapDay(sortedOldest(assets)) }
+        if isSelecting {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) { toggleSelection(for: assets) }
+            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+        } else {
+            onTapDay(sortedOldest(assets))
+        }
     }
     @ViewBuilder private func contextMenu(_ assets: [PHAsset]) -> some View {
         if !assets.isEmpty {
