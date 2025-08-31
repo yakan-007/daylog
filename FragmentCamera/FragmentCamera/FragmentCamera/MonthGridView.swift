@@ -274,6 +274,17 @@ struct MonthGridView: View {
                             }
                         }
                         .padding(.horizontal, 8)
+                        .onAppear {
+                            // Pre-cache month assets with a reasonable default size for current width
+                            let approxCell = max(100, min(180, proxy.size.width / 3 - spacing * 2))
+                            let ts = CGSize(width: approxCell * 2, height: approxCell * 2)
+                            viewModel.startCaching(assets: allAssets(in: month), targetSize: ts)
+                        }
+                        .onDisappear {
+                            let approxCell = max(100, min(180, proxy.size.width / 3 - spacing * 2))
+                            let ts = CGSize(width: approxCell * 2, height: approxCell * 2)
+                            viewModel.stopCaching(assets: allAssets(in: month), targetSize: ts)
+                        }
                     }
                 }
             }

@@ -38,8 +38,10 @@ struct VideoThumbnailView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
         .onAppear {
-            let size = CGSize(width: 200, height: 200)
-            viewModel.loadThumbnail(for: asset, targetSize: size) { image in
+            // Request at 2x of intended display size for retina sharpness
+            let side = (size ?? 100) * 2
+            let target = CGSize(width: side, height: side)
+            viewModel.loadThumbnail(for: asset, targetSize: target) { image in
                 self.thumbnail = image
             }
         }
@@ -392,6 +394,13 @@ struct DaySectionView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            // Pre-cache this day's assets at 2x of 100pt
+            viewModel.startCaching(assets: group.assets, targetSize: CGSize(width: 200, height: 200))
+        }
+        .onDisappear {
+            viewModel.stopCaching(assets: group.assets, targetSize: CGSize(width: 200, height: 200))
         }
     }
 }

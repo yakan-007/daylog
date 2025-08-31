@@ -11,6 +11,7 @@ struct DayVideoGroup: Identifiable, Hashable {
 
 class PhotoSheetViewModel: ObservableObject {
     @Published var groupedVideos: [DayVideoGroup] = []
+    private let imageManager = PHCachingImageManager()
     private let calendar = Calendar.current
 
     func fetchAllVideos() {
@@ -61,9 +62,27 @@ class PhotoSheetViewModel: ObservableObject {
         options.deliveryMode = .opportunistic
         options.resizeMode = .exact
 
-        PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
+        imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
             completion(image)
         }
+    }
+
+    func startCaching(assets: [PHAsset], targetSize: CGSize) {
+        guard !assets.isEmpty else { return }
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .exact
+        imageManager.startCachingImages(for: assets, targetSize: targetSize, contentMode: .aspectFill, options: options)
+    }
+
+    func stopCaching(assets: [PHAsset], targetSize: CGSize) {
+        guard !assets.isEmpty else { return }
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .exact
+        imageManager.stopCachingImages(for: assets, targetSize: targetSize, contentMode: .aspectFill, options: options)
     }
 
     func getPlacemark(for location: CLLocation, completion: @escaping (String?) -> Void) {
