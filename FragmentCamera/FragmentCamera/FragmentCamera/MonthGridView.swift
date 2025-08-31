@@ -352,7 +352,7 @@ struct MonthGridView: View {
     }
 
     private func weekdaySymbols() -> [String] {
-        var df = DateFormatter(); df.locale = Locale.current
+        let df = DateFormatter(); df.locale = Locale.current
         // Start from calendar.firstWeekday to match layout
         let symbols = df.shortWeekdaySymbols ?? ["日","月","火","水","木","金","土"]
         let start = Calendar.current.firstWeekday - 1 // convert to 0-based

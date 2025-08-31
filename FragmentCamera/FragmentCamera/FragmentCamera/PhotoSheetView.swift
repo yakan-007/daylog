@@ -73,7 +73,7 @@ struct DateHeaderView: View {
     let assets: [PHAsset]
     var onPlayAll: (([PHAsset]) -> Void)? = nil
     var onShareAll: (([PHAsset]) -> Void)? = nil
-    @Environment(.horizontalSizeClass) private var hSize
+    @Environment(\.horizontalSizeClass) private var hSize
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -155,7 +155,6 @@ struct DateHeaderView: View {
         let h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
-}
 }
 
 struct PhotoSheetView: View {
