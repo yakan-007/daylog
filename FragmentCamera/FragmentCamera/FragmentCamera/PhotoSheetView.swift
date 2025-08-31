@@ -8,11 +8,13 @@ struct VideoThumbnailView: View {
     @ObservedObject var viewModel: PhotoSheetViewModel
     @State private var thumbnail: UIImage? = nil
     let size: CGFloat?
+    let showsDurationBadge: Bool
     
-    init(asset: PHAsset, viewModel: PhotoSheetViewModel, size: CGFloat? = nil) {
+    init(asset: PHAsset, viewModel: PhotoSheetViewModel, size: CGFloat? = nil, showsDurationBadge: Bool = true) {
         self.asset = asset
         self.viewModel = viewModel
         self.size = size
+        self.showsDurationBadge = showsDurationBadge
     }
 
     var body: some View {
@@ -26,7 +28,7 @@ struct VideoThumbnailView: View {
                     Rectangle().fill(Color(uiColor: .secondarySystemBackground))
                 }
             }
-            if let durLabel = durationLabel {
+            if showsDurationBadge, let durLabel = durationLabel {
                 badge(text: durLabel)
                     .padding(6)
             }

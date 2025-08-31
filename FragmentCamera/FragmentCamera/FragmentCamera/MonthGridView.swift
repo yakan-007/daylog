@@ -36,8 +36,8 @@ struct DayCellView: View {
                     .fill(Color(uiColor: .secondarySystemBackground))
 
                 if let date = date, let rep = assets.first {
-                    // Thumbnail
-                    VideoThumbnailView(asset: rep, viewModel: viewModel, size: side)
+                    // Thumbnail (hide per-clip duration to avoid confusion)
+                    VideoThumbnailView(asset: rep, viewModel: viewModel, size: side, showsDurationBadge: false)
 
                     // Date + weekday label (top-left)
                     VStack {
@@ -79,11 +79,12 @@ struct DayCellView: View {
                         .allowsHitTesting(false)
                     }
 
-                    // Total duration (bottom-left)
+                    // Total duration (bottom-right)
                     if let label = totalDurationLabel() {
                         VStack {
                             Spacer()
                             HStack {
+                                Spacer()
                                 Text(label)
                                     .font(.system(size: 10, weight: .semibold))
                                     .foregroundColor(.white)
@@ -92,7 +93,6 @@ struct DayCellView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(Capsule())
                                     .padding(6)
-                                Spacer()
                             }
                         }
                         .allowsHitTesting(false)
