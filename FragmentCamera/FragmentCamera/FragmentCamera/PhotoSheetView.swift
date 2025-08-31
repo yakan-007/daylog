@@ -236,7 +236,7 @@ struct PhotoSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) { Image(systemName: "xmark.circle.fill") }
+                    Button(action: { dismiss() }) { toolbarIcon("xmark.circle.fill") }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if hSize == .compact {
@@ -255,19 +255,17 @@ struct PhotoSheetView: View {
                                     let target = allSelectableIds()
                                     let allSelected = target.isSubset(of: selectedIds)
                                     if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
-                                } label: {
-                                    Image(systemName: allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle")
-                                }
+                                } label: { toolbarIcon(allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle") }
                                 Button {
                                     let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                     if !assets.isEmpty { shareAssets = assets }
-                                } label: { Image(systemName: "square.and.arrow.up") }
+                                } label: { toolbarIcon("square.and.arrow.up") }
                                 .disabled(selectedIds.isEmpty)
                                 Button(role: .destructive) {
                                     let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                     self.bulkDeleteAssets = assets
                                     self.showBulkDeleteDialog = true
-                                } label: { Image(systemName: "trash") }
+                                } label: { toolbarIcon("trash") }
                                 .disabled(selectedIds.isEmpty)
                                 // Exit selection
                                 Button(action: {
@@ -275,12 +273,12 @@ struct PhotoSheetView: View {
                                         isSelecting = false
                                         selectedIds.removeAll()
                                     }
-                                }) { Image(systemName: "checkmark.circle") }
+                                }) { toolbarIcon("checkmark.circle") }
                             } else {
                                 Button(action: {
                                     withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
                                     FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                                }) { Image(systemName: "checkmark.circle") }
+                                }) { toolbarIcon("checkmark.circle") }
                             }
                         }
                     } else {
@@ -299,20 +297,18 @@ struct PhotoSheetView: View {
                                 let target = allSelectableIds()
                                 let allSelected = target.isSubset(of: selectedIds)
                                 if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
-                            } label: {
-                                Image(systemName: allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle")
-                            }
+                            } label: { toolbarIcon(allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle") }
                             Button {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                 if !assets.isEmpty { shareAssets = assets }
-                            } label: { Image(systemName: "square.and.arrow.up") }
+                            } label: { toolbarIcon("square.and.arrow.up") }
                             .disabled(selectedIds.isEmpty)
 
                             Button(role: .destructive) {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                 self.bulkDeleteAssets = assets
                                 self.showBulkDeleteDialog = true
-                            } label: { Image(systemName: "trash") }
+                            } label: { toolbarIcon("trash") }
                             .disabled(selectedIds.isEmpty)
                             // Exit selection
                             Button(action: {
@@ -320,12 +316,12 @@ struct PhotoSheetView: View {
                                     isSelecting = false
                                     selectedIds.removeAll()
                                 }
-                            }) { Image(systemName: "checkmark.circle") }
+                            }) { toolbarIcon("checkmark.circle") }
                         } else {
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
                                 FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                            }) { Image(systemName: "checkmark.circle") }
+                            }) { toolbarIcon("checkmark.circle") }
                         }
                         }
                     }
@@ -384,6 +380,16 @@ struct PhotoSheetView: View {
     }
 
     private func titleForTab(_ tab: Tab) -> String { tab == .list ? "動画" : (tab == .calendar ? "カレンダー" : "マップ") }
+
+    // Standardized toolbar icon with minimum tap target
+    @ViewBuilder
+    private func toolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 18, weight: .semibold))
+            .frame(width: 44, height: 44, alignment: .center)
+            .contentShape(Rectangle())
+    }
 
     private func findAsset(by id: String) -> PHAsset? {
         for group in viewModel.groupedVideos {
