@@ -128,10 +128,12 @@ struct PhotoSheetView: View {
         get { Tab(rawValue: selectedTabRaw) ?? .list }
         set { selectedTabRaw = newValue.rawValue }
     }
+    @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
         NavigationView {
-            TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
+            ZStack(alignment: .bottomTrailing) {
+                TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
                 // Days/List
                 ScrollView {
                     ForEach(viewModel.groupedVideos) { group in
@@ -184,6 +186,22 @@ struct PhotoSheetView: View {
                 MapVideosView(viewModel: viewModel)
                     .tabItem { Label("マップ", systemImage: "map") }
                     .tag(Tab.map)
+                }
+
+                // Floating action button (return to camera)
+                if !isSelecting {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 52, height: 52)
+                            .background(Color.accentColor)
+                            .clipShape(Circle())
+                            .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 24)
+                }
             }
             .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : titleForTab(selectedTab))
             .navigationBarTitleDisplayMode(.inline)
@@ -192,16 +210,61 @@ struct PhotoSheetView: View {
                     Button(action: { dismiss() }) { Image(systemName: "xmark.circle.fill") }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        if isSelecting {
-                            // Selection count badge
-                            Text("\(selectedIds.count)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Capsule())
-                                .contentTransition(.numericText())
+                    if hSize == .compact {
+                        HStack(spacing: 12) {
+                            if isSelecting {
+                                // Selection count badge
+                                Text("\(selectedIds.count)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                    .contentTransition(.numericText())
+                                // Select all / clear
+                                Button {
+                                    let target = allSelectableIds()
+                                    let allSelected = target.isSubset(of: selectedIds)
+                                    if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
+                                } label: {
+                                    Image(systemName: allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle")
+                                }
+                                Button {
+                                    let assets = selectedIds.compactMap { id in findAsset(by: id) }
+                                    if !assets.isEmpty { shareAssets = assets }
+                                } label: { Image(systemName: "square.and.arrow.up") }
+                                .disabled(selectedIds.isEmpty)
+                                Button(role: .destructive) {
+                                    let assets = selectedIds.compactMap { id in findAsset(by: id) }
+                                    self.bulkDeleteAssets = assets
+                                    self.showBulkDeleteDialog = true
+                                } label: { Image(systemName: "trash") }
+                                .disabled(selectedIds.isEmpty)
+                                // Exit selection
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isSelecting = false
+                                        selectedIds.removeAll()
+                                    }
+                                }) { Image(systemName: "checkmark.circle") }
+                            } else {
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
+                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+                                }) { Image(systemName: "checkmark.circle") }
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 16) {
+                            if isSelecting {
+                                // Selection count badge
+                                Text("\(selectedIds.count)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                    .contentTransition(.numericText())
                             // Select all / clear
                             Button {
                                 let target = allSelectableIds()
@@ -235,9 +298,12 @@ struct PhotoSheetView: View {
                                 FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                             }) { Image(systemName: "checkmark.circle") }
                         }
+                        }
                     }
                 }
             }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
         .onAppear {
             viewModel.fetchAllVideos()
