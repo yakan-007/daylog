@@ -60,10 +60,9 @@ struct DayCellView: View {
                     }
                     .allowsHitTesting(false)
 
-                    // Count badge (bottom-right)
-                    if assets.count > 1 {
+                    // Count badge (top-right) when not selecting
+                    if !isSelecting && assets.count > 1 {
                         VStack {
-                            Spacer()
                             HStack {
                                 Spacer()
                                 Text("\(assets.count)")
@@ -74,6 +73,26 @@ struct DayCellView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(Capsule())
                                     .padding(6)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                    }
+
+                    // Total duration (bottom-left)
+                    if let label = totalDurationLabel() {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Text(label)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                    .padding(6)
+                                Spacer()
                             }
                         }
                         .allowsHitTesting(false)
@@ -132,6 +151,17 @@ struct DayCellView: View {
         df.locale = Locale.current
         df.dateFormat = "EEE" // localized short weekday
         return df.string(from: date)
+    }
+
+    private func totalDurationLabel() -> String? {
+        guard !assets.isEmpty else { return nil }
+        let total = Int(assets.reduce(0.0) { $0 + $1.duration }.rounded())
+        if total <= 0 { return nil }
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        else { return String(format: "%d:%02d", m, s) }
     }
 }
 
