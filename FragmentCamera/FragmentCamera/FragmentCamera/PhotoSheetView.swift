@@ -179,28 +179,30 @@ struct PhotoSheetView: View {
     var body: some View {
         NavigationView {
             TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
-                // Days/List
+                // Days/List (with sticky section headers)
                 ScrollView {
-                    ForEach(viewModel.groupedVideos) { group in
-                        DaySectionView(
-                            group: group,
-                            viewModel: viewModel,
-                            onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
-                            onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
-                            onTapAsset: { asset in
-                                if let idx = group.assets.firstIndex(of: asset) {
-                                    self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
-                                } else {
-                                    self.assetToPlay = IdentifiableAsset(asset: asset)
-                                }
-                            },
-                            onDeleteAsset: { asset in
-                                self.assetToDelete = IdentifiableAsset(asset: asset)
-                                self.showDeleteDialog = true
-                            },
-                            isSelecting: $isSelecting,
-                            selectedIds: $selectedIds
-                        )
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        ForEach(viewModel.groupedVideos) { group in
+                            DaySectionView(
+                                group: group,
+                                viewModel: viewModel,
+                                onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                                onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
+                                onTapAsset: { asset in
+                                    if let idx = group.assets.firstIndex(of: asset) {
+                                        self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
+                                    } else {
+                                        self.assetToPlay = IdentifiableAsset(asset: asset)
+                                    }
+                                },
+                                onDeleteAsset: { asset in
+                                    self.assetToDelete = IdentifiableAsset(asset: asset)
+                                    self.showDeleteDialog = true
+                                },
+                                isSelecting: $isSelecting,
+                                selectedIds: $selectedIds
+                            )
+                        }
                     }
                 }
                 .refreshable { viewModel.fetchAllVideos() }
