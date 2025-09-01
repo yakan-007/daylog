@@ -31,6 +31,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     private var stableConsecutiveFrames = 0
     private let sessionQueue = DispatchQueue(label: "CameraService.SessionQueue")
     private var pendingStart: (duration: TimeInterval, orientation: UIDeviceOrientation)?
+    private var currentPlannedDuration: TimeInterval?
 
     override init() {
         super.init()
@@ -156,8 +157,9 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         }
         if movieOutput.connection(with: .video) == nil || !session.isRunning {
             pendingStart = (duration, orientation)
-            DispatchQueue.main.async { self.isRecording = true }
+            currentPlannedDuration = duration
         } else {
+            currentPlannedDuration = duration
             startRecordingNow(duration: duration, orientation: orientation)
         }
         #endif
@@ -174,10 +176,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
             let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
             self.movieOutput.startRecording(to: tempURL, recordingDelegate: self)
         }
-        DispatchQueue.main.async {
-            self.isRecording = true
-            self.recordingTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in self?.stopRecording() }
-        }
+        // Defer isRecording state and timer scheduling to didStartRecording delegate for accurate syncing
         #endif
     }
 
@@ -195,9 +194,22 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         #else
             print("SIMULATOR: Faking recording stop.")
         #endif
+        // Cancel any queued start to avoid odd toggling behavior
+        pendingStart = nil
         recordingTimer?.invalidate()
         recordingTimer = nil
+        currentPlannedDuration = nil
         DispatchQueue.main.async { self.isRecording = false }
+    }
+
+    // Accurate recording start callback (iOS provides this when file output begins)
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        DispatchQueue.main.async {
+            self.isRecording = true
+            if let d = self.currentPlannedDuration {
+                self.recordingTimer = Timer.scheduledTimer(withTimeInterval: d, repeats: false) { [weak self] _ in self?.stopRecording() }
+            }
+        }
     }
 
     func switchCamera() {

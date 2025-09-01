@@ -56,6 +56,7 @@ struct ContentView: View {
     @State private var showExposureSlider: Bool = false
     @State private var exposureTimer: Timer?
     @State private var isCaptureUIActive: Bool = false
+    @State private var lastShutterTapAt: Date = .distantPast
     
     // Motion-based orientation so icons rotate even with UI lock
     final class MotionOrientationManager: ObservableObject {
@@ -135,6 +136,10 @@ struct ContentView: View {
             motionOrientation.start()
         }
         .onDisappear { motionOrientation.stop() }
+        .onChange(of: cameraService.isRecording) { _, rec in
+            withAnimation(.spring()) { self.isCaptureUIActive = rec }
+            if rec { self.startProgressTimer() } else { self.stopProgressTimer() }
+        }
         .sheet(isPresented: $showPhotoSheet) {
             PhotoSheetView()
         }
@@ -240,7 +245,17 @@ struct ContentView: View {
                 .buttonStyle(SquishableButtonStyle())
                 .frame(maxWidth: .infinity)
 
-                Button(action: { if isCaptureUIActive { stopRecording() } else { startRecording() } }) {
+                Button(action: {
+                    let now = Date()
+                    // Debounce rapid toggles within 0.3s
+                    if now.timeIntervalSince(lastShutterTapAt) < 0.3 { return }
+                    lastShutterTapAt = now
+                    if isCaptureUIActive { stopRecording() } else {
+                        // Guard: only start if ready
+                        guard cameraService.isReadyToRecord else { return }
+                        startRecording()
+                    }
+                }) {
                     ZStack {
                         Circle()
                             .strokeBorder(Color.white.opacity(0.9), lineWidth: 3.5)
@@ -257,8 +272,14 @@ struct ContentView: View {
                             .stroke(Color(hex: 0xFFC857), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                             .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
+                        if !cameraService.isReadyToRecord && !isCaptureUIActive {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(.white)
+                        }
                     }
                 }
+                .disabled(!cameraService.isReadyToRecord && !isCaptureUIActive)
                 .frame(maxWidth: .infinity)
 
                 Button(action: { cameraService.switchCamera() }) {
@@ -372,16 +393,12 @@ struct ContentView: View {
     
     private func startRecording() {
         FeedbackManager.shared.triggerFeedback(soundEnabled: true)
-        isCaptureUIActive = true
         cameraService.startRecording(duration: selectedDuration, orientation: self.currentOrientation)
-        startProgressTimer()
     }
     
     private func stopRecording() {
         FeedbackManager.shared.triggerFeedback(soundEnabled: true)
         cameraService.stopRecording()
-        stopProgressTimer()
-        isCaptureUIActive = false
     }
     
     private func startProgressTimer() {
