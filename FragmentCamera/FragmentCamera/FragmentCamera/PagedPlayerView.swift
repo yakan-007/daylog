@@ -73,4 +73,9 @@ final class PlayerContainerView: UIView {
         player.pause()
         // Keep item; when re-activated it will be replaced with fresh item
     }
+
+    deinit {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+    }
 }

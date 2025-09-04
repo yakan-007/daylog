@@ -122,8 +122,10 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                     let videoLayer = CALayer(); videoLayer.frame = CGRect(origin: .zero, size: renderSize)
                     let overlayLayer = CALayer(); overlayLayer.frame = videoLayer.frame
                     let textLayer = CATextLayer()
+                    // Use the day's date (earliest asset) for the overlay
+                    let overlayDate: Date = (assets.compactMap { $0.creationDate }.sorted().first) ?? Date()
                     let df = DateFormatter(); df.dateFormat = format
-                    textLayer.string = df.string(from: Date())
+                    textLayer.string = df.string(from: overlayDate)
                     textLayer.alignmentMode = .right
                     textLayer.font = "Menlo-Bold" as CFTypeRef
                     textLayer.fontSize = renderSize.height * 0.055

@@ -27,6 +27,7 @@ struct DayCellView: View {
         return !assets.isEmpty && !set.isSubset(of: selectedIds) && !set.isDisjoint(with: selectedIds)
     }
 
+
     var body: some View {
         GeometryReader { proxy in
             let side = min(proxy.size.width, proxy.size.height)
@@ -203,33 +204,18 @@ struct MonthGridView: View {
                                     if let dur = totalDurationLabel(for: assets) { chip(text: dur) }
                                 }
                                 if useAdaptive {
-                                    // Compact width: collapse into menu to save space
-                                    Menu {
-                                        if let onPlayMonth = onPlayMonth { Button { onPlayMonth(sortedOldest(allAssets(in: month))) } label: { Label("この月を再生", systemImage: "play.fill") } }
-                                        if let onShareMonth = onShareMonth { Button { onShareMonth(sortedOldest(allAssets(in: month))) } label: { Label("この月を共有", systemImage: "square.and.arrow.up") } }
-                                        if let onDeleteMonth = onDeleteMonth { Button(role: .destructive) { onDeleteMonth(allAssets(in: month)) } label: { Label("この月を削除", systemImage: "trash") } }
-                                    } label: {
-                                        Image(systemName: "ellipsis.circle")
+                                    // Compact width: share-only（重複する再生/削除は排除）
+                                    if let onShareMonth = onShareMonth {
+                                        Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) { Image(systemName: "square.and.arrow.up") }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
                                     }
                                 } else {
                                     HStack(spacing: 10) {
-                                        if let onPlayMonth = onPlayMonth {
-                                            Button(action: { onPlayMonth(sortedOldest(allAssets(in: month))) }) {
-                                                Label("再生", systemImage: "play.fill")
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                        }
+                                        // Regular width: 再生/共有は許可。削除は残すか好みに応じて
                                         if let onShareMonth = onShareMonth {
                                             Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
                                                 Label("共有", systemImage: "square.and.arrow.up")
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                        }
-                                        if let onDeleteMonth = onDeleteMonth {
-                                            Button(role: .destructive, action: { onDeleteMonth(allAssets(in: month)) }) {
-                                                Label("削除", systemImage: "trash")
                                             }
                                             .buttonStyle(.bordered)
                                             .controlSize(.small)
@@ -239,9 +225,8 @@ struct MonthGridView: View {
                             }
                             .padding(.vertical, 12)
                             .padding(.horizontal, 14)
-                            .background(.ultraThinMaterial)
+                            .background(.thinMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
                             .padding(.horizontal, 10)
                             if useAdaptive {
                                 // Adaptive grid: only existing days, bigger tiles, vertical scroll

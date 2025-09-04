@@ -26,4 +26,9 @@ struct PlayerView: UIViewControllerRepresentable {
             }
         }
     }
+
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
+        uiViewController.player?.pause()
+        uiViewController.player?.replaceCurrentItem(with: nil)
+    }
 }

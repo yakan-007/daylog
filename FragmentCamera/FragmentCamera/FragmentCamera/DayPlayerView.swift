@@ -15,6 +15,15 @@ struct DayPlayerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
 
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
+        uiViewController.player?.pause()
+        if let q = uiViewController.player as? AVQueuePlayer {
+            q.removeAllItems()
+        } else {
+            uiViewController.player?.replaceCurrentItem(with: nil)
+        }
+    }
+
     private func loadItems(into controller: AVPlayerViewController) {
         let queue = controller.player as? AVQueuePlayer
         let options = PHVideoRequestOptions()
@@ -37,4 +46,3 @@ struct DayPlayerView: UIViewControllerRepresentable {
         }
     }
 }
-

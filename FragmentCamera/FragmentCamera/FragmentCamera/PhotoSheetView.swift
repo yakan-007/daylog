@@ -7,6 +7,7 @@ struct VideoThumbnailView: View {
     let asset: PHAsset
     @ObservedObject var viewModel: PhotoSheetViewModel
     @State private var thumbnail: UIImage? = nil
+    @State private var isLoaded: Bool = false
     let size: CGFloat?
     let showsDurationBadge: Bool
     
@@ -19,13 +20,14 @@ struct VideoThumbnailView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            Group {
+            ZStack {
+                Rectangle().fill(Color(uiColor: .secondarySystemBackground))
                 if let thumbnail = thumbnail {
                     Image(uiImage: thumbnail)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                } else {
-                    Rectangle().fill(Color(uiColor: .secondarySystemBackground))
+                        .opacity(isLoaded ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.15), value: isLoaded)
                 }
             }
             if showsDurationBadge, let durLabel = durationLabel {
@@ -43,6 +45,7 @@ struct VideoThumbnailView: View {
             let target = CGSize(width: side, height: side)
             viewModel.loadThumbnail(for: asset, targetSize: target) { image in
                 self.thumbnail = image
+                withAnimation(.easeInOut(duration: 0.15)) { self.isLoaded = (image != nil) }
             }
         }
     }
@@ -75,19 +78,7 @@ struct DateHeaderView: View {
     var onShareAll: (([PHAsset]) -> Void)? = nil
     @Environment(\.horizontalSizeClass) private var hSize
 
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
-        return formatter
-    }()
-    
-    init(date: Date, assets: [PHAsset], viewModel: PhotoSheetViewModel, onPlayAll: (([PHAsset]) -> Void)? = nil, onShareAll: (([PHAsset]) -> Void)? = nil) {
-        self.date = date
-        self.assets = assets
-        self.onPlayAll = onPlayAll
-        self.onShareAll = onShareAll
-    }
+    // Default init is sufficient
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -100,34 +91,20 @@ struct DateHeaderView: View {
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
-                if assets.count > 1 { chip(text: "\(assets.count)") }
                 if let dur = totalDurationLabel() { chip(text: dur) }
             }
-            if hSize == .compact {
-                Menu {
-                    if let onPlayAll = onPlayAll { Button { onPlayAll(assets) } label: { Label("この日を再生", systemImage: "play.fill") } }
-                    if let onShareAll = onShareAll { Button { onShareAll(assets) } label: { Label("この日を共有", systemImage: "square.and.arrow.up") } }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+            if let onShareAll = onShareAll {
+                Button(action: { onShareAll(assets) }) {
+                    Image(systemName: "square.and.arrow.up")
                 }
-            } else {
-                if let onPlayAll = onPlayAll {
-                    Button(action: { onPlayAll(assets) }) { Label("再生", systemImage: "play.fill") }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                if let onShareAll = onShareAll {
-                    Button(action: { onShareAll(assets) }) { Label("共有", systemImage: "square.and.arrow.up") }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
-        .background(.ultraThinMaterial)
+        .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
         .padding(.horizontal, 10)
     }
 
@@ -179,9 +156,9 @@ struct PhotoSheetView: View {
     var body: some View {
         NavigationView {
             TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
-                // Days/List (with sticky section headers)
+                // Days/List (simple, non-sticky headers)
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(viewModel.groupedVideos) { group in
                             DaySectionView(
                                 group: group,
@@ -237,74 +214,31 @@ struct PhotoSheetView: View {
             .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : titleForTab(selectedTab))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Leading: Close or Cancel (exit selection)
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) { toolbarIcon("xmark.circle.fill") }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if hSize == .compact {
-                        HStack(spacing: 12) {
-                            if isSelecting {
-                                // Selection count badge
-                                Text("\(selectedIds.count)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Capsule())
-                                    .contentTransition(.numericText())
-                                // Select all / clear
-                                Button {
-                                    let target = allSelectableIds()
-                                    let allSelected = target.isSubset(of: selectedIds)
-                                    if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
-                                } label: { toolbarIcon(allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle") }
-                                Button {
-                                    let assets = selectedIds.compactMap { id in findAsset(by: id) }
-                                    if !assets.isEmpty { shareAssets = assets }
-                                } label: { toolbarIcon("square.and.arrow.up") }
-                                .disabled(selectedIds.isEmpty)
-                                Button(role: .destructive) {
-                                    let assets = selectedIds.compactMap { id in findAsset(by: id) }
-                                    self.bulkDeleteAssets = assets
-                                    self.showBulkDeleteDialog = true
-                                } label: { toolbarIcon("trash") }
-                                .disabled(selectedIds.isEmpty)
-                                // Exit selection
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        isSelecting = false
-                                        selectedIds.removeAll()
-                                    }
-                                }) { toolbarIcon("checkmark.circle") }
-                            } else {
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
-                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                                }) { toolbarIcon("checkmark.circle") }
+                    if isSelecting {
+                        Button("キャンセル") {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                isSelecting = false
+                                selectedIds.removeAll()
                             }
                         }
+                        .accessibilityLabel("選択をやめる")
                     } else {
-                        HStack(spacing: 16) {
-                            if isSelecting {
-                                // Selection count badge
-                                Text("\(selectedIds.count)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Capsule())
-                                    .contentTransition(.numericText())
-                            // Select all / clear
-                            Button {
-                                let target = allSelectableIds()
-                                let allSelected = target.isSubset(of: selectedIds)
-                                if allSelected { selectedIds.subtract(target) } else { selectedIds.formUnion(target) }
-                            } label: { toolbarIcon(allSelectableIds().isSubset(of: selectedIds) ? "checkmark.circle.trianglebadge.exclamationmark" : "checkmark.circle") }
+                        Button(action: { dismiss() }) { toolbarIcon("xmark.circle.fill") }
+                        .accessibilityLabel("閉じる")
+                    }
+                }
+                // Trailing: Enter selection OR (share, delete)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if isSelecting {
+                        HStack(spacing: 14) {
                             Button {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
                                 if !assets.isEmpty { shareAssets = assets }
                             } label: { toolbarIcon("square.and.arrow.up") }
                             .disabled(selectedIds.isEmpty)
+                            .accessibilityLabel("選択した動画を書き出す")
 
                             Button(role: .destructive) {
                                 let assets = selectedIds.compactMap { id in findAsset(by: id) }
@@ -312,23 +246,19 @@ struct PhotoSheetView: View {
                                 self.showBulkDeleteDialog = true
                             } label: { toolbarIcon("trash") }
                             .disabled(selectedIds.isEmpty)
-                            // Exit selection
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    isSelecting = false
-                                    selectedIds.removeAll()
-                                }
-                            }) { toolbarIcon("checkmark.circle") }
-                        } else {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
-                                FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                            }) { toolbarIcon("checkmark.circle") }
+                            .accessibilityLabel("選択した動画を削除")
                         }
+                    } else {
+                        Button("選択") {
+                            withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
+                            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         }
+                        .accessibilityLabel("選択モードにする")
                     }
                 }
             }
+            // Hidden watcher to auto-exit selection when empty
+            .background(monitorSelectionAutoExit())
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
@@ -393,6 +323,8 @@ struct PhotoSheetView: View {
             .contentShape(Rectangle())
     }
 
+    
+
     private func findAsset(by id: String) -> PHAsset? {
         for group in viewModel.groupedVideos {
             if let asset = group.assets.first(where: { $0.localIdentifier == id }) {
@@ -437,6 +369,25 @@ struct PhotoSheetView: View {
     }
 }
 
+// MARK: - Selection helpers (auto-exit)
+extension PhotoSheetView {
+    // Auto-exit selection when there are no selections left
+    private func monitorSelectionAutoExit() -> some View {
+        EmptyView()
+            .onChange(of: selectedIds) { _, newValue in
+                if isSelecting && newValue.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if selectedIds.isEmpty {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                isSelecting = false
+                            }
+                        }
+                    }
+                }
+            }
+    }
+}
+
 struct DaySectionView: View {
     let group: DayVideoGroup
     @ObservedObject var viewModel: PhotoSheetViewModel
@@ -448,7 +399,7 @@ struct DaySectionView: View {
     @Binding var selectedIds: Set<String>
 
     var body: some View {
-        Section(header: DateHeaderView(date: group.date, assets: group.assets, viewModel: viewModel, onPlayAll: onPlayAll, onShareAll: onShareAll)) {
+        Section(header: DateHeaderView(date: group.date, assets: group.assets, onPlayAll: onPlayAll, onShareAll: onShareAll)) {
             let columns: [GridItem] = [GridItem(.adaptive(minimum: 100))]
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(group.assets, id: \.self) { asset in
@@ -463,7 +414,7 @@ struct DaySectionView: View {
                             }
                             FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         } else {
-                            onTapAsset(asset)
+                            onPlayAll(group.assets)
                         }
                     }) {
                         ZStack {
@@ -489,13 +440,6 @@ struct DaySectionView: View {
                                                 .font(.system(size: 18, weight: .bold))
                                                 .foregroundColor(selected ? .accentColor : .white)
                                                 .shadow(color: Color.black.opacity(0.25), radius: 1, x: 0, y: 1)
-                                                .symbolEffect(.bounce, value: selected)
-                                        } else {
-                                            Circle().fill(.ultraThinMaterial)
-                                                .frame(width: 22, height: 22)
-                                            Image(systemName: "play.fill")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(.white)
                                         }
                                     }
                                     .padding(6)
@@ -505,7 +449,7 @@ struct DaySectionView: View {
                             .allowsHitTesting(false)
                         }
                     }
-                    .onLongPressGesture(minimumDuration: 0.3) {
+                    .highPriorityGesture(LongPressGesture(minimumDuration: 0.3).onEnded { _ in
                         if !isSelecting {
                             withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
                                 isSelecting = true
@@ -513,20 +457,28 @@ struct DaySectionView: View {
                             }
                             FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         }
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) { onDeleteAsset(asset) } label: { Label("削除", systemImage: "trash") }
-                    }
+                    })
+                    // Simplify: no per-item context menu in list for lighter UI
                 }
             }
         }
-        .onAppear {
-            // Pre-cache this day's assets at 2x of 100pt
-            viewModel.startCaching(assets: group.assets, targetSize: CGSize(width: 200, height: 200))
-        }
-        .onDisappear {
-            viewModel.stopCaching(assets: group.assets, targetSize: CGSize(width: 200, height: 200))
-        }
+        .modifier(DayCachingModifier(viewModel: viewModel, assets: group.assets))
+    }
+}
+
+private struct DayCachingModifier: ViewModifier {
+    @ObservedObject var viewModel: PhotoSheetViewModel
+    let assets: [PHAsset]
+    @State private var didCache = false
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                // Avoid start/stop thrash during sticky headers: cache once
+                if !didCache {
+                    viewModel.startCaching(assets: assets, targetSize: CGSize(width: 200, height: 200))
+                    didCache = true
+                }
+            }
     }
 }
 
