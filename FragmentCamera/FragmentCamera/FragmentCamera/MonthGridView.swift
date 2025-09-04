@@ -15,18 +15,6 @@ struct DayCellView: View {
     let date: Date?
     let assets: [PHAsset]
     @ObservedObject var viewModel: PhotoSheetViewModel
-    let isSelecting: Bool
-    @Binding var selectedIds: Set<String>
-
-    private var isSelectedAll: Bool {
-        guard !assets.isEmpty else { return false }
-        return Set(assets.map { $0.localIdentifier }).isSubset(of: selectedIds)
-    }
-    private var isPartiallySelected: Bool {
-        let set = Set(assets.map { $0.localIdentifier })
-        return !assets.isEmpty && !set.isSubset(of: selectedIds) && !set.isDisjoint(with: selectedIds)
-    }
-
 
     var body: some View {
         GeometryReader { proxy in
@@ -37,107 +25,38 @@ struct DayCellView: View {
                     .fill(Color(uiColor: .secondarySystemBackground))
 
                 if let date = date, let rep = assets.first {
-                    // Thumbnail (hide per-clip duration to avoid confusion)
+                    // Thumbnail
                     VideoThumbnailView(asset: rep, viewModel: viewModel, size: side, showsDurationBadge: false)
 
-                    // Weekday over Day (top-left, stacked)
+                    // Simple day number (top-left) — avoid truncation
                     VStack {
                         HStack {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(weekdayShort(from: date))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                Text(dayNumber(from: date))
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.primary)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .padding(6)
+                            Text(dayNumber(from: date))
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                                .allowsTightening(true)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.black.opacity(0.25))
+                                .clipShape(Capsule())
+                                .padding(4)
                             Spacer()
                         }
                         Spacer()
                     }
                     .allowsHitTesting(false)
-
-                    // Count badge (top-right) when not selecting
-                    if !isSelecting && assets.count > 1 {
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Text("\(assets.count)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Capsule())
-                                    .padding(6)
-                            }
-                            Spacer()
-                        }
-                        .allowsHitTesting(false)
-                    }
-
-                    // Total duration (bottom-right)
-                    if let label = totalDurationLabel() {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                Text(label)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Capsule())
-                                    .padding(6)
-                            }
-                        }
-                        .allowsHitTesting(false)
-                    }
-
-                    // Selection overlay
-                    if isSelecting {
-                        if isSelectedAll || isPartiallySelected {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.accentColor, lineWidth: 3)
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.accentColor.opacity(0.15))
-                        }
-                        VStack {
-                            HStack {
-                                Spacer()
-                                let iconName: String = isSelectedAll ? "checkmark.circle.fill" : (isPartiallySelected ? "minus.circle.fill" : "circle")
-                                Image(systemName: iconName)
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor((isSelectedAll || isPartiallySelected) ? .accentColor : .white)
-                                    .shadow(color: Color.black.opacity(0.25), radius: 1, x: 0, y: 1)
-                                    .padding(6)
-                            }
-                            Spacer()
-                        }
-                        .allowsHitTesting(false)
-                    }
                 } else if let date = date { // day with no assets (for 7-col calendar)
                     VStack {
                         HStack {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(weekdayShort(from: date))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                                Text(dayNumber(from: date))
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .padding(6)
+                            Text(dayNumber(from: date))
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                                .allowsTightening(true)
+                                .foregroundColor(.secondary)
+                                .padding(4)
                             Spacer()
                         }
                         Spacer()
@@ -181,76 +100,30 @@ struct MonthGridView: View {
     var onPlayMonth: (([PHAsset]) -> Void)? = nil
     var onShareMonth: (([PHAsset]) -> Void)? = nil
     var onDeleteMonth: (([PHAsset]) -> Void)? = nil
-    @Binding var isSelecting: Bool
-    @Binding var selectedIds: Set<String>
     @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
         GeometryReader { proxy in
             let spacing: CGFloat = 6
-            let useAdaptive = hSize == .compact
             ScrollView {
                 LazyVStack(spacing: 16) {
                     ForEach(months) { month in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 12) {
-                                Text("\(month.year)年\(month.month)月")
+                                Text(String(format: "%d年%d月", month.year, month.month))
                                     .font(.system(size: 20, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
+                                    .allowsTightening(true)
+                                    .layoutPriority(1)
                                 Spacer(minLength: 12)
-                                // Chips: count and total duration for month
-                                HStack(spacing: 8) {
-                                    let assets = allAssets(in: month)
-                                    if assets.count > 1 { chip(text: "\(assets.count)") }
-                                    if let dur = totalDurationLabel(for: assets) { chip(text: dur) }
-                                }
-                                if useAdaptive {
-                                    // Compact width: share-only（重複する再生/削除は排除）
-                                    if let onShareMonth = onShareMonth {
-                                        Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) { Image(systemName: "square.and.arrow.up") }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                    }
-                                } else {
-                                    HStack(spacing: 10) {
-                                        // Regular width: 再生/共有は許可。削除は残すか好みに応じて
-                                        if let onShareMonth = onShareMonth {
-                                            Button(action: { onShareMonth(sortedOldest(allAssets(in: month))) }) {
-                                                Label("共有", systemImage: "square.and.arrow.up")
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                        }
-                                    }
-                                }
                             }
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 8)
                             .padding(.horizontal, 14)
                             .background(.thinMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .padding(.horizontal, 10)
-                            if useAdaptive {
-                                // Adaptive grid: only existing days, bigger tiles, vertical scroll
-                                let days = month.assetsByDay.keys.sorted()
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: spacing)], spacing: spacing) {
-                                    ForEach(days, id: \.self) { d in
-                                        let assets = month.assetsByDay[d] ?? []
-                                        let date = Calendar.current.date(byAdding: .day, value: d - 1, to: month.firstDate)!
-                                        DayCellView(date: date, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds)
-                                            .onTapGesture { handleTap(assets) }
-                                            .onLongPressGesture(minimumDuration: 0.3) {
-                                                if !isSelecting {
-                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
-                                                        isSelecting = true
-                                                        toggleSelection(for: assets)
-                                                    }
-                                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                                                }
-                                            }
-                                            .contextMenu { contextMenu(assets) }
-                                    }
-                                }
-                            } else {
-                                // 7-column calendar for iPad/regular
+                            // 7-column calendar for all widths
                                 let columnsCount = 7
                                 let totalSpacing = spacing * CGFloat(columnsCount - 1)
                                 let horizontalPadding: CGFloat = 16
@@ -277,22 +150,17 @@ struct MonthGridView: View {
                                     ForEach(1...month.numberOfDays, id: \.self) { d in
                                         let assets = month.assetsByDay[d] ?? []
                                         let date = Calendar.current.date(byAdding: .day, value: d - 1, to: month.firstDate)!
-                                        DayCellView(date: date, assets: assets, viewModel: viewModel, isSelecting: isSelecting, selectedIds: $selectedIds)
+                                        DayCellView(date: date, assets: assets, viewModel: viewModel)
                                             .frame(width: cell)
-                                            .onTapGesture { handleTap(assets) }
-                                            .onLongPressGesture(minimumDuration: 0.3) {
-                                                if !isSelecting {
-                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
-                                                        isSelecting = true
-                                                        toggleSelection(for: assets)
-                                                    }
-                                                    FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+                                            .onTapGesture { onTapDay(sortedOldest(assets)) }
+                                            .contextMenu {
+                                                if !assets.isEmpty {
+                                                    Button { onTapDay(sortedOldest(assets)) } label: { Label("再生", systemImage: "play.fill") }
+                                                    if let onShareDay = onShareDay { Button { onShareDay(sortedOldest(assets)) } label: { Label("書き出し", systemImage: "square.and.arrow.up") } }
                                                 }
                                             }
-                                            .contextMenu { contextMenu(assets) }
                                     }
                                 }
-                            }
                         }
                         .padding(.horizontal, 8)
                         .onAppear {
@@ -312,35 +180,8 @@ struct MonthGridView: View {
         }
     }
 
-    private func handleTap(_ assets: [PHAsset]) {
-        if isSelecting {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) { toggleSelection(for: assets) }
-            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-        } else {
-            onTapDay(sortedOldest(assets))
-        }
-    }
-    @ViewBuilder private func contextMenu(_ assets: [PHAsset]) -> some View {
-        if !assets.isEmpty {
-            Button { onTapDay(sortedOldest(assets)) } label: { Label("再生", systemImage: "play.fill") }
-            if let onShareDay = onShareDay { Button { onShareDay(sortedOldest(assets)) } label: { Label("共有", systemImage: "square.and.arrow.up") } }
-            if let onDeleteDay = onDeleteDay { Button(role: .destructive) { onDeleteDay(assets) } label: { Label("削除", systemImage: "trash") } }
-        }
-    }
-
     private func sortedOldest(_ assets: [PHAsset]) -> [PHAsset] {
         assets.sorted { (a, b) in (a.creationDate ?? .distantPast) < (b.creationDate ?? .distantPast) }
-    }
-
-    private func toggleSelection(for assets: [PHAsset]) {
-        guard !assets.isEmpty else { return }
-        let ids = Set(assets.map { $0.localIdentifier })
-        let allSelected = ids.isSubset(of: selectedIds)
-        if allSelected {
-            selectedIds.subtract(ids)
-        } else {
-            selectedIds.formUnion(ids)
-        }
     }
 
     private func allAssets(in month: MonthSection) -> [PHAsset] {

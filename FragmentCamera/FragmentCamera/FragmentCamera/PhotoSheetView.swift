@@ -88,11 +88,12 @@ struct DateHeaderView: View {
                     .foregroundColor(.primary)
                 Text(dayTitle(from: date))
                     .font(.system(size: 20, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                    .allowsTightening(true)
             }
             Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                if let dur = totalDurationLabel() { chip(text: dur) }
-            }
+            // Keep header minimal; remove chips to avoid truncation
             if let onShareAll = onShareAll {
                 Button(action: { onShareAll(assets) }) {
                     Image(systemName: "square.and.arrow.up")
@@ -123,7 +124,7 @@ struct DateHeaderView: View {
         return df.string(from: date)
     }
     private func dayTitle(from date: Date) -> String {
-        let df = DateFormatter(); df.locale = Locale.current; df.dateFormat = "yyyy/MM/dd"
+        let df = DateFormatter(); df.locale = Locale.current; df.dateFormat = "M/d"
         return df.string(from: date)
     }
     private func totalDurationLabel() -> String? {
@@ -198,9 +199,7 @@ struct PhotoSheetView: View {
                     onDeleteMonth: { assets in
                         self.bulkDeleteAssets = assets
                         self.showBulkDeleteDialog = true
-                    },
-                    isSelecting: $isSelecting,
-                    selectedIds: $selectedIds
+                    }
                 )
                 .refreshable { viewModel.fetchAllVideos() }
                 .tabItem { Label("カレンダー", systemImage: "calendar") }
@@ -249,11 +248,14 @@ struct PhotoSheetView: View {
                             .accessibilityLabel("選択した動画を削除")
                         }
                     } else {
-                        Button("選択") {
-                            withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
-                            FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+                        // Show selection entry only on List tab
+                        if selectedTab == .list {
+                            Button("選択") {
+                                withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
+                                FeedbackManager.shared.triggerFeedback(soundEnabled: false)
+                            }
+                            .accessibilityLabel("選択モードにする")
                         }
-                        .accessibilityLabel("選択モードにする")
                     }
                 }
             }
