@@ -1,6 +1,7 @@
 import SwiftUI
 import Photos
 import CoreLocation
+import OSLog
 
 // A struct to hold videos grouped by a specific day
 struct DayVideoGroup: Identifiable, Hashable {
@@ -15,44 +16,40 @@ class PhotoSheetViewModel: ObservableObject {
     private let calendar = Calendar.current
 
     func fetchAllVideos() {
-        // 1. Find the "daylog" album
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", "daylog")
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
+        DispatchQueue.global(qos: .userInitiated).async {
+            // 1. Find the "daylog" album
+            let fetchOptions = PHFetchOptions()
+            fetchOptions.predicate = NSPredicate(format: "title = %@", "daylog")
+            let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
 
-        guard let album = collections.firstObject else {
-            print("Album 'daylog' not found.")
+            guard let album = collections.firstObject else {
+                AppLog.export.error("Album 'daylog' not found.")
+                DispatchQueue.main.async { self.groupedVideos = [] }
+                return
+            }
+
+            // 2. Fetch all videos from that album, sorted by creation date
+            let assetsFetchOptions = PHFetchOptions()
+            assetsFetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            assetsFetchOptions.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.video.rawValue)
+            let fetchResult = PHAsset.fetchAssets(in: album, options: assetsFetchOptions)
+
+            // 3. Group assets by day
+            var assetsByDay: [Date: [PHAsset]] = [:]
+            fetchResult.enumerateObjects { (asset, _, _) in
+                let day = Calendar.current.startOfDay(for: asset.creationDate ?? Date())
+                assetsByDay[day, default: []].append(asset)
+            }
+
+            // 4. Convert to sorted groups
+            let sortedGroups = assetsByDay.map { (date, assets) in
+                DayVideoGroup(id: date, date: date, assets: assets)
+            }.sorted { $0.date > $1.date }
+
             DispatchQueue.main.async {
-                self.groupedVideos = []
+                self.groupedVideos = sortedGroups
+                AppLog.export.info("Fetched and grouped videos for \(sortedGroups.count) days.")
             }
-            return
-        }
-
-        // 2. Fetch all videos from that album, sorted by creation date
-        let assetsFetchOptions = PHFetchOptions()
-        assetsFetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        assetsFetchOptions.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.video.rawValue)
-        
-        let fetchResult = PHAsset.fetchAssets(in: album, options: assetsFetchOptions)
-
-        // 3. Group assets by day
-        var assetsByDay: [Date: [PHAsset]] = [:]
-        fetchResult.enumerateObjects { (asset, _, _) in
-            let day = Calendar.current.startOfDay(for: asset.creationDate ?? Date())
-            if assetsByDay[day] == nil {
-                assetsByDay[day] = []
-            }
-            assetsByDay[day]?.append(asset)
-        }
-
-        // 4. Convert the dictionary to a sorted array of DayVideoGroup structs
-        let sortedGroups = assetsByDay.map { (date, assets) in
-            DayVideoGroup(id: date, date: date, assets: assets)
-        }.sorted { $0.date > $1.date } // Sort so the most recent day is first
-
-        DispatchQueue.main.async {
-            self.groupedVideos = sortedGroups
-            print("Fetched and grouped videos for \(sortedGroups.count) days.")
         }
     }
 
@@ -89,7 +86,7 @@ class PhotoSheetViewModel: ObservableObject {
         let geocoder = CLGeocoder()
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             if let error = error {
-                print("Reverse geocoding failed: \(error.localizedDescription)")
+                AppLog.location.error("Reverse geocoding failed: \(error.localizedDescription)")
                 completion(nil)
                 return
             }
@@ -113,7 +110,7 @@ class PhotoSheetViewModel: ObservableObject {
                 if success {
                     self.fetchAllVideos()
                 } else if let error = error {
-                    print("Failed to delete asset: \(error.localizedDescription)")
+                    AppLog.export.error("Failed to delete asset: \(error.localizedDescription)")
                 }
                 completion(success)
             }

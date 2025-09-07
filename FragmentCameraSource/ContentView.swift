@@ -2,10 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var cameraService = CameraService()
-    // サムネイル用の仮画像
-    @State private var thumbnail: UIImage? = nil
-    // 録画時間の表示用
-    @State private var recordingTime: TimeInterval = 0
+    struct CaptureUIState {
+        var thumbnail: UIImage? = nil
+        var recordingTime: TimeInterval = 0
+    }
+    @State private var ui = CaptureUIState()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -50,7 +51,7 @@ struct ContentView: View {
 
             // 3. 録画タイマー (画面上部中央に固定)
             if cameraService.isRecording {
-                Text(formatTime(recordingTime))
+                Text(formatTime(ui.recordingTime))
                     .foregroundColor(.white)
                     .font(.headline)
                     .padding(.horizontal, 12)
@@ -67,7 +68,7 @@ struct ContentView: View {
                 Button(action: {
                     // TODO: ギャラリー表示機能の実装
                 }) {
-                    if let thumbnail = thumbnail {
+                    if let thumbnail = ui.thumbnail {
                         Image(uiImage: thumbnail)
                             .resizable()
                             .scaledToFill()
@@ -98,7 +99,7 @@ struct ContentView: View {
                         cameraService.stopRecording()
                         // TODO: 録画停止時にサムネイルを更新する処理
                     } else {
-                        recordingTime = 0
+                        ui.recordingTime = 0
                         cameraService.startRecording()
                     }
                 }) {
@@ -129,7 +130,7 @@ struct ContentView: View {
         }
         .onReceive(timer) { _ in
             if cameraService.isRecording {
-                recordingTime += 1
+                ui.recordingTime += 1
             }
         }
         .edgesIgnoringSafeArea(.all) // ZStack全体でSafeAreaを無視するようにする

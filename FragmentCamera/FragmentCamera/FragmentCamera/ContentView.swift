@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Photos
 import CoreMotion
 import AVFoundation
 
@@ -57,6 +58,7 @@ struct ContentView: View {
     @State private var exposureTimer: Timer?
     @State private var isCaptureUIActive: Bool = false
     @State private var lastShutterTapAt: Date = .distantPast
+    @State private var latestThumbnail: UIImage? = nil
     
     // Motion-based orientation so icons rotate even with UI lock
     final class MotionOrientationManager: ObservableObject {
@@ -118,6 +120,33 @@ struct ContentView: View {
                     .foregroundColor(.white)
                     .transition(.opacity)
             }
+
+            // Session interruption overlay
+            if cameraService.isSessionInterrupted {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("カメラが一時的に使用できません")
+                        .foregroundColor(.white)
+                        .font(.system(size: 18, weight: .semibold))
+                    Button(action: { cameraService.restartSession() }) {
+                        Text("再試行")
+                            .font(.system(size: 16, weight: .bold))
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color(hex: 0xFFC857))
+                            .foregroundColor(.black)
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(24)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .shadow(radius: 10)
+            }
+
         }
         .onChange(of: isTorchOn) { _, newValue in
             cameraService.toggleTorch(on: newValue)
@@ -134,11 +163,13 @@ struct ContentView: View {
         .onAppear {
             cameraService.checkForPermissions()
             motionOrientation.start()
+            updateLatestThumbnail()
         }
         .onDisappear { motionOrientation.stop() }
         .onChange(of: cameraService.isRecording) { _, rec in
             withAnimation(.spring()) { self.isCaptureUIActive = rec }
             if rec { self.startProgressTimer() } else { self.stopProgressTimer() }
+            if !rec { updateLatestThumbnail() }
         }
         .sheet(isPresented: $showPhotoSheet) {
             PhotoSheetView()
@@ -152,6 +183,7 @@ struct ContentView: View {
         } message: {
             Text("このアプリの全機能を利用するには、設定アプリからカメラへのアクセスを許可してください。")
         }
+        // Export UI intentionally removed: keep capture flow uninterrupted
     }
     
     // MARK: - Gestures
@@ -237,10 +269,20 @@ struct ContentView: View {
             
             HStack(alignment: .center, spacing: 20) {
                 Button(action: { self.showPhotoSheet = true }) {
-                    // Placeholder for photo library thumbnail
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 24))
-                        .rotationEffect(iconAngle)
+                    Group {
+                        if let thumb = latestThumbnail {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 44, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.9), lineWidth: 1))
+                        } else {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 24))
+                                .rotationEffect(iconAngle)
+                        }
+                    }
                 }
                 .buttonStyle(SquishableButtonStyle())
                 .frame(maxWidth: .infinity)
@@ -414,6 +456,24 @@ struct ContentView: View {
         progressTimer?.invalidate()
         progressTimer = nil
         recordingProgress = 0.0
+    }
+
+    // Fetch the latest video thumbnail from the photo library
+    private func updateLatestThumbnail() {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = 1
+        let videos = PHAsset.fetchAssets(with: .video, options: options)
+        guard let asset = videos.firstObject else { return }
+        let manager = PHImageManager.default()
+        let target = CGSize(width: 200, height: 200)
+        let requestOptions = PHImageRequestOptions()
+        requestOptions.deliveryMode = .fastFormat
+        requestOptions.resizeMode = .fast
+        requestOptions.isSynchronous = false
+        manager.requestImage(for: asset, targetSize: target, contentMode: .aspectFill, options: requestOptions) { image, _ in
+            if let image = image { self.latestThumbnail = image }
+        }
     }
 }
 

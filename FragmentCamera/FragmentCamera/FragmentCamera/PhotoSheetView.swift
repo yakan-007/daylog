@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import OSLog
 import CoreLocation
 
 // A view for a single video thumbnail
@@ -154,6 +155,8 @@ struct PhotoSheetView: View {
     }
     @Environment(\.horizontalSizeClass) private var hSize
 
+    @State private var isFetching: Bool = false
+
     var body: some View {
         NavigationView {
             TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
@@ -263,10 +266,23 @@ struct PhotoSheetView: View {
             .background(monitorSelectionAutoExit())
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            // Loading overlay when fetching from Photos
+            .overlay(
+                Group {
+                    if isFetching {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.secondary)
+                    }
+                }
+            )
         }
         .onAppear {
+            isFetching = true
             viewModel.fetchAllVideos()
         }
+        // Stop spinner when data arrives
+        .onChange(of: viewModel.groupedVideos) { _, _ in isFetching = false }
         .sheet(item: $assetToPlay) { identifiableAsset in
             PlayerView(asset: identifiableAsset.asset)
         }
@@ -343,7 +359,7 @@ struct PhotoSheetView: View {
         }) { success, error in
             DispatchQueue.main.async {
                 if !success, let error = error {
-                    print("Failed to delete assets: \(error.localizedDescription)")
+                    AppLog.export.error("Failed to delete assets: \(error.localizedDescription)")
                 }
                 self.selectedIds.removeAll()
                 self.isSelecting = false
@@ -416,7 +432,7 @@ struct DaySectionView: View {
                             }
                             FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                         } else {
-                            onPlayAll(group.assets)
+                            onTapAsset(asset)
                         }
                     }) {
                         ZStack {
