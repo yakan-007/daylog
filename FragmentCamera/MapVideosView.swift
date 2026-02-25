@@ -1,14 +1,16 @@
+#if DEBUG
 import SwiftUI
 import MapKit
 import CoreLocation
 import Combine
 import Photos
+import Foundation
 
 struct MapVideosView: View {
     @ObservedObject var viewModel: PhotoSheetViewModel
     @State private var cameraPosition: MapCameraPosition = .automatic
     @StateObject private var locator = MapLocationProvider()
-    @State private var selectedPlace: PlaceCluster? = nil
+    @State private var selectedPlaceId: String? = nil
     @State private var playDay: IdentifiableAssets? = nil
     @State private var shareDay: IdentifiableAssets? = nil
     @State private var currentRegion: MKCoordinateRegion? = nil
@@ -24,7 +26,8 @@ struct MapVideosView: View {
             let coords = assetsWithLoc.map { $0.1 }
             let center = avgCoordinate(coords)
             let assets = assetsWithLoc.map { $0.0 }
-            return DayCluster(date: group.date, assets: assets, coordinate: center)
+            let dayKey = dayId(date: group.date, coordinate: center)
+            return DayCluster(id: dayKey, date: group.date, assets: assets, coordinate: center)
         }
         .sorted { $0.date > $1.date }
     }
@@ -32,18 +35,20 @@ struct MapVideosView: View {
     // Group nearby day clusters into place clusters (~100m grid)
     var placeClusters: [PlaceCluster] {
         let buckets = Dictionary(grouping: dayClusters) { (dc: DayCluster) -> String in
-            let lat = dc.coordinate.latitude
-            let lon = dc.coordinate.longitude
-            // ~100m grid bucketing
-            let x = Int((lat * 1000.0).rounded())
-            let y = Int((lon * 1000.0).rounded())
-            return "\(x)_\(y)"
+            gridKey(for: dc.coordinate)
         }
         return buckets.values.map { days in
             let coords = days.map { $0.coordinate }
             let center = avgCoordinate(coords)
-            return PlaceCluster(days: days.sorted { $0.date > $1.date }, coordinate: center)
+            let sortedDays = days.sorted { $0.date > $1.date }
+            let key = gridKey(for: center)
+            return PlaceCluster(id: key, days: sortedDays, coordinate: center)
         }.sorted { ($0.days.first?.date ?? .distantPast) > ($1.days.first?.date ?? .distantPast) }
+    }
+
+    private var selectedPlace: PlaceCluster? {
+        guard let selectedPlaceId else { return nil }
+        return placeClusters.first(where: { $0.id == selectedPlaceId })
     }
 
     var body: some View {
@@ -52,17 +57,18 @@ struct MapVideosView: View {
                     ForEach(placeClusters) { plc in
                         Annotation("", coordinate: plc.coordinate) {
                             Button(action: {
-                                selectedPlace = plc
+                                selectedPlaceId = plc.id
                             }) {
                                 ZStack {
                                     Image(systemName: "mappin.circle.fill")
                                         .font(.title)
-                                        .foregroundColor(.red)
+                                        .foregroundColor(selectedPlaceId == plc.id ? Color(hex: 0xFFC857) : .red)
                                     Text("\(plc.days.count)")
                                         .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(.white)
-                                        .padding(4)
-                                        .background(Color.red.opacity(0.9))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 4)
+                                        .background((selectedPlaceId == plc.id ? Color(hex: 0xFFC857) : .red).opacity(0.92))
                                         .clipShape(Capsule())
                                         .offset(y: -28)
                                 }
@@ -75,24 +81,24 @@ struct MapVideosView: View {
                 if let plc = selectedPlace {
                     PlaceMiniCard(
                         place: plc,
-                        onClose: { selectedPlace = nil },
+                        onClose: { selectedPlaceId = nil },
                         onPlayRecent: {
                             let recent = plc.days.prefix(5).flatMap { $0.assets }
                             playDay = IdentifiableAssets(assets: sortedOldest(recent))
-                            selectedPlace = nil
+                            selectedPlaceId = nil
                         },
                         onShareRecent: {
                             let recent = plc.days.prefix(5).flatMap { $0.assets }
                             shareDay = IdentifiableAssets(assets: sortedOldest(recent))
-                            selectedPlace = nil
+                            selectedPlaceId = nil
                         },
                         onPlayDay: { dc in
                             playDay = IdentifiableAssets(assets: sortedOldest(dc.assets))
-                            selectedPlace = nil
+                            selectedPlaceId = nil
                         },
                         onShareDay: { dc in
                             shareDay = IdentifiableAssets(assets: sortedOldest(dc.assets))
-                            selectedPlace = nil
+                            selectedPlaceId = nil
                         }
                     )
                     .padding(.horizontal, 12)
@@ -163,7 +169,7 @@ final class MapLocationProvider: NSObject, ObservableObject, CLLocationManagerDe
 }
 
 struct DayCluster: Identifiable {
-    let id = UUID()
+    let id: String
     let date: Date
     let assets: [PHAsset]
     let coordinate: CLLocationCoordinate2D
@@ -257,7 +263,7 @@ private struct MapMiniDayCard: View {
 }
 
 struct PlaceCluster: Identifiable {
-    let id = UUID()
+    let id: String
     let days: [DayCluster]
     let coordinate: CLLocationCoordinate2D
 }
@@ -270,6 +276,7 @@ private struct PlaceMiniCard: View {
     var onPlayDay: (DayCluster) -> Void
     var onShareDay: (DayCluster) -> Void
     @State private var thumbnail: UIImage? = nil
+    @State private var resolvedPlaceName: String? = nil
 
     var body: some View {
         VStack(spacing: 10) {
@@ -336,7 +343,12 @@ private struct PlaceMiniCard: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
-        .onAppear { loadThumbnail() }
+        .onAppear {
+            loadThumbnail()
+            PlaceNameResolver.shared.resolveName(for: place.coordinate) { name in
+                self.resolvedPlaceName = name
+            }
+        }
     }
 
     private func loadThumbnail() {
@@ -348,10 +360,53 @@ private struct PlaceMiniCard: View {
         }
     }
 
-    private func placeTitle() -> String { "この場所" } // TODO: reverse geocode (later)
+    private func placeTitle() -> String { resolvedPlaceName ?? "この周辺" }
     private func dayTitle(_ date: Date) -> String { let f = DateFormatter(); f.locale = .current; f.dateFormat = "M/d"; return f.string(from: date) }
 }
 
 private func sortedOldest(_ assets: [PHAsset]) -> [PHAsset] {
     assets.sorted { (a, b) in (a.creationDate ?? .distantPast) < (b.creationDate ?? .distantPast) }
 }
+
+private func gridKey(for coordinate: CLLocationCoordinate2D) -> String {
+    let x = Int((coordinate.latitude * 1000.0).rounded())
+    let y = Int((coordinate.longitude * 1000.0).rounded())
+    return "\(x)_\(y)"
+}
+
+private func dayId(date: Date, coordinate: CLLocationCoordinate2D) -> String {
+    let day = Int(date.timeIntervalSince1970 / 86_400)
+    return "\(day)_\(gridKey(for: coordinate))"
+}
+
+final class PlaceNameResolver {
+    static let shared = PlaceNameResolver()
+    private var cache: [String: String] = [:]
+    private let lock = NSLock()
+
+    private init() {}
+
+    func resolveName(for coordinate: CLLocationCoordinate2D, completion: @escaping (String?) -> Void) {
+        let key = gridKey(for: coordinate)
+        lock.lock()
+        if let cached = cache[key] {
+            lock.unlock()
+            completion(cached)
+            return
+        }
+        lock.unlock()
+
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        CLGeocoder().reverseGeocodeLocation(location) { placemarks, _ in
+            let placemark = placemarks?.first
+            let name = placemark?.locality ?? placemark?.subLocality ?? placemark?.name ?? "この周辺"
+            self.lock.lock()
+            self.cache[key] = name
+            self.lock.unlock()
+            DispatchQueue.main.async {
+                completion(name)
+            }
+        }
+    }
+}
+#endif

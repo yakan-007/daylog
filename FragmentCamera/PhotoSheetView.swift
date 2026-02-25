@@ -9,6 +9,7 @@ struct VideoThumbnailView: View {
     @ObservedObject var viewModel: PhotoSheetViewModel
     @State private var thumbnail: UIImage? = nil
     @State private var isLoaded: Bool = false
+    @State private var thumbnailRequestID: PHImageRequestID = PHInvalidImageRequestID
     let size: CGFloat?
     let showsDurationBadge: Bool
     
@@ -38,16 +39,21 @@ struct VideoThumbnailView: View {
         }
         .frame(width: size ?? 100, height: size ?? 100)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(PhotoSheetStyle.thumbnailStroke, lineWidth: 1))
+        .shadow(color: Color.black.opacity(PhotoSheetStyle.thumbnailShadowOpacity), radius: 4, x: 0, y: 2)
         .onAppear {
-            // Request at 2x of intended display size for retina sharpness
-            let side = (size ?? 100) * 2
+            if thumbnail != nil { return }
+            // Keep request size moderate to avoid decode spikes during fast scroll.
+            let side = (size ?? 100) * 1.4
             let target = CGSize(width: side, height: side)
-            viewModel.loadThumbnail(for: asset, targetSize: target) { image in
+            thumbnailRequestID = viewModel.loadThumbnail(for: asset, targetSize: target) { image in
                 self.thumbnail = image
                 withAnimation(.easeInOut(duration: 0.15)) { self.isLoaded = (image != nil) }
             }
+        }
+        .onDisappear {
+            viewModel.cancelThumbnailRequest(thumbnailRequestID)
+            thumbnailRequestID = PHInvalidImageRequestID
         }
     }
 
@@ -85,10 +91,11 @@ struct DateHeaderView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(weekdayString(from: date))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .font(AppTheme.labelFont)
+                    .foregroundColor(AppTheme.onGlass.opacity(0.88))
                 Text(dayTitle(from: date))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(AppTheme.titleFont)
+                    .foregroundColor(AppTheme.onGlass)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                     .allowsTightening(true)
@@ -105,9 +112,8 @@ struct DateHeaderView: View {
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 10)
+        .photoSheetCard(radius: PhotoSheetStyle.headerCornerRadius)
+        .padding(.horizontal, PhotoSheetStyle.sectionHorizontalPadding)
     }
 
     private func chip(text: String) -> some View {
@@ -121,7 +127,9 @@ struct DateHeaderView: View {
     }
 
     private func weekdayString(from date: Date) -> String {
-        let df = DateFormatter(); df.locale = Locale.current; df.dateFormat = "EEE"
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ja_JP")
+        df.dateFormat = "E"
         return df.string(from: date)
     }
     private func dayTitle(from date: Date) -> String {
@@ -138,6 +146,7 @@ struct DateHeaderView: View {
 
 struct PhotoSheetView: View {
     @StateObject private var viewModel = PhotoSheetViewModel()
+    @StateObject private var libraryViewModel = LibraryScreenViewModel()
     @Environment(\.dismiss) var dismiss
     @State private var assetToPlay: IdentifiableAsset? = nil
     @State private var playAllAssets: [PHAsset]? = nil
@@ -145,9 +154,7 @@ struct PhotoSheetView: View {
     @State private var assetToDelete: IdentifiableAsset? = nil
     @State private var showDeleteDialog: Bool = false
     @State private var assetListToPlay: IdentifiableAssetsWithIndex? = nil
-    @State private var isSelecting: Bool = false
-    @State private var selectedIds: Set<String> = []
-    enum Tab: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー"; case map = "マップ" }
+    enum Tab: String, CaseIterable { case list = "リスト"; case calendar = "カレンダー" }
     @AppStorage("photoTab") private var selectedTabRaw: String = Tab.list.rawValue
     private var selectedTab: Tab {
         get { Tab(rawValue: selectedTabRaw) ?? .list }
@@ -155,45 +162,36 @@ struct PhotoSheetView: View {
     }
     @Environment(\.horizontalSizeClass) private var hSize
 
-    @State private var isFetching: Bool = false
 
     var body: some View {
         NavigationView {
             TabView(selection: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue })) {
-                // Days/List (simple, non-sticky headers)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(viewModel.groupedVideos) { group in
-                            DaySectionView(
-                                group: group,
-                                viewModel: viewModel,
-                                onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
-                                onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
-                                onTapAsset: { asset in
-                                    if let idx = group.assets.firstIndex(of: asset) {
-                                        self.assetListToPlay = IdentifiableAssetsWithIndex(assets: group.assets, index: idx)
-                                    } else {
-                                        self.assetToPlay = IdentifiableAsset(asset: asset)
-                                    }
-                                },
-                                onDeleteAsset: { asset in
-                                    self.assetToDelete = IdentifiableAsset(asset: asset)
-                                    self.showDeleteDialog = true
-                                },
-                                isSelecting: $isSelecting,
-                                selectedIds: $selectedIds
-                            )
+                LibraryListView(
+                    groups: viewModel.visibleListGroups,
+                    photoViewModel: viewModel,
+                    libraryViewModel: libraryViewModel,
+                    onPlayAll: { assets in self.playAllAssets = sortOldestFirst(assets) },
+                    onShareAll: { assets in self.shareAssets = sortOldestFirst(assets) },
+                    onTapAsset: { asset, groupAssets in
+                        if let idx = groupAssets.firstIndex(of: asset) {
+                            self.assetListToPlay = IdentifiableAssetsWithIndex(assets: groupAssets, index: idx)
+                        } else {
+                            self.assetToPlay = IdentifiableAsset(asset: asset)
                         }
+                    },
+                    onDeleteAsset: { asset in
+                        self.assetToDelete = IdentifiableAsset(asset: asset)
+                        self.showDeleteDialog = true
+                    },
+                    onGroupAppear: { group in
+                        viewModel.loadMoreListIfNeeded(currentGroup: group)
                     }
-                }
-                .refreshable { viewModel.fetchAllVideos() }
+                )
                 .tabItem { Label("リスト", systemImage: "list.bullet") }
                 .tag(Tab.list)
 
-                // Calendar
-                MonthGridView(
-                    months: viewModel.buildMonthSections(),
-                    viewModel: viewModel,
+                LibraryCalendarView(
+                    photoViewModel: viewModel,
                     onTapDay: { assets in self.playAllAssets = sortOldestFirst(assets) },
                     onShareDay: { assets in self.shareAssets = sortOldestFirst(assets) },
                     onDeleteDay: { assets in self.delete(assets: assets) },
@@ -204,85 +202,58 @@ struct PhotoSheetView: View {
                         self.showBulkDeleteDialog = true
                     }
                 )
-                .refreshable { viewModel.fetchAllVideos() }
                 .tabItem { Label("カレンダー", systemImage: "calendar") }
                 .tag(Tab.calendar)
 
-                // Map
-                MapVideosView(viewModel: viewModel)
-                    .tabItem { Label("マップ", systemImage: "map") }
-                    .tag(Tab.map)
             }
-            .navigationTitle(isSelecting ? "選択中 (\(selectedIds.count))" : titleForTab(selectedTab))
+            .navigationTitle(libraryViewModel.isSelecting ? "選択中 (\(libraryViewModel.selectedIds.count))" : titleForTab(selectedTab))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Leading: Close or Cancel (exit selection)
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if isSelecting {
-                        Button("キャンセル") {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                isSelecting = false
-                                selectedIds.removeAll()
-                            }
+                LibrarySelectionToolbar(
+                    isSelecting: $libraryViewModel.isSelecting,
+                    selectedTab: Binding(get: { selectedTab }, set: { selectedTabRaw = $0.rawValue }),
+                    selectedCount: libraryViewModel.selectedIds.count,
+                    onClose: { dismiss() },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            libraryViewModel.clearSelection()
                         }
-                        .accessibilityLabel("選択をやめる")
-                    } else {
-                        Button(action: { dismiss() }) { toolbarIcon("xmark.circle.fill") }
-                        .accessibilityLabel("閉じる")
+                    },
+                    onShare: {
+                        let assets = libraryViewModel.selectedIds.compactMap { id in findAsset(by: id) }
+                        if !assets.isEmpty { shareAssets = assets }
+                    },
+                    onDelete: {
+                        let assets = libraryViewModel.selectedIds.compactMap { id in findAsset(by: id) }
+                        self.bulkDeleteAssets = assets
+                        self.showBulkDeleteDialog = true
+                    },
+                    onEnterSelection: {
+                        withAnimation(.easeInOut(duration: 0.15)) { libraryViewModel.isSelecting = true }
+                        FeedbackManager.shared.triggerFeedback(soundEnabled: false)
                     }
-                }
-                // Trailing: Enter selection OR (share, delete)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if isSelecting {
-                        HStack(spacing: 14) {
-                            Button {
-                                let assets = selectedIds.compactMap { id in findAsset(by: id) }
-                                if !assets.isEmpty { shareAssets = assets }
-                            } label: { toolbarIcon("square.and.arrow.up") }
-                            .disabled(selectedIds.isEmpty)
-                            .accessibilityLabel("選択した動画を書き出す")
-
-                            Button(role: .destructive) {
-                                let assets = selectedIds.compactMap { id in findAsset(by: id) }
-                                self.bulkDeleteAssets = assets
-                                self.showBulkDeleteDialog = true
-                            } label: { toolbarIcon("trash") }
-                            .disabled(selectedIds.isEmpty)
-                            .accessibilityLabel("選択した動画を削除")
-                        }
-                    } else {
-                        // Show selection entry only on List tab
-                        if selectedTab == .list {
-                            Button("選択") {
-                                withAnimation(.easeInOut(duration: 0.15)) { isSelecting = true }
-                                FeedbackManager.shared.triggerFeedback(soundEnabled: false)
-                            }
-                            .accessibilityLabel("選択モードにする")
-                        }
-                    }
-                }
+                )
             }
             // Hidden watcher to auto-exit selection when empty
             .background(monitorSelectionAutoExit())
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             // Loading overlay when fetching from Photos
-            .overlay(
-                Group {
-                    if isFetching {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.secondary)
-                    }
+            .overlay {
+                if viewModel.isFetching {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.secondary)
+                        .allowsHitTesting(false)
                 }
-            )
+            }
         }
         .onAppear {
-            isFetching = true
+            if Tab(rawValue: selectedTabRaw) == nil {
+                selectedTabRaw = Tab.list.rawValue
+            }
             viewModel.fetchAllVideos()
         }
-        // Stop spinner when data arrives
-        .onChange(of: viewModel.groupedVideos) { _, _ in isFetching = false }
         .sheet(item: $assetToPlay) { identifiableAsset in
             PlayerView(asset: identifiableAsset.asset)
         }
@@ -329,19 +300,7 @@ struct PhotoSheetView: View {
         }
     }
 
-    private func titleForTab(_ tab: Tab) -> String { tab == .list ? "動画" : (tab == .calendar ? "カレンダー" : "マップ") }
-
-    // Standardized toolbar icon with minimum tap target
-    @ViewBuilder
-    private func toolbarIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(.hierarchical)
-            .font(.system(size: 18, weight: .semibold))
-            .frame(width: 44, height: 44, alignment: .center)
-            .contentShape(Rectangle())
-    }
-
-    
+    private func titleForTab(_ tab: Tab) -> String { tab == .list ? "動画" : "カレンダー" }
 
     private func findAsset(by id: String) -> PHAsset? {
         for group in viewModel.groupedVideos {
@@ -361,17 +320,10 @@ struct PhotoSheetView: View {
                 if !success, let error = error {
                     AppLog.export.error("Failed to delete assets: \(error.localizedDescription)")
                 }
-                self.selectedIds.removeAll()
-                self.isSelecting = false
+                self.libraryViewModel.clearSelection()
                 self.viewModel.fetchAllVideos()
             }
         }
-    }
-
-    private func allSelectableIds() -> Set<String> {
-        // Use all assets in groupedVideos (covers both list and calendar datasets)
-        let ids = viewModel.groupedVideos.flatMap { $0.assets }.map { $0.localIdentifier }
-        return Set(ids)
     }
 
     @State private var showBulkDeleteDialog: Bool = false
@@ -392,12 +344,12 @@ extension PhotoSheetView {
     // Auto-exit selection when there are no selections left
     private func monitorSelectionAutoExit() -> some View {
         EmptyView()
-            .onChange(of: selectedIds) { _, newValue in
-                if isSelecting && newValue.isEmpty {
+            .onChange(of: libraryViewModel.selectedIds) { _, newValue in
+                if libraryViewModel.isSelecting && newValue.isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if selectedIds.isEmpty {
+                        if libraryViewModel.selectedIds.isEmpty {
                             withAnimation(.easeInOut(duration: 0.15)) {
-                                isSelecting = false
+                                libraryViewModel.isSelecting = false
                             }
                         }
                     }
@@ -419,7 +371,7 @@ struct DaySectionView: View {
     var body: some View {
         Section(header: DateHeaderView(date: group.date, assets: group.assets, onPlayAll: onPlayAll, onShareAll: onShareAll)) {
             let columns: [GridItem] = [GridItem(.adaptive(minimum: 100))]
-            LazyVGrid(columns: columns, spacing: 2) {
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(group.assets, id: \.self) { asset in
                     Button(action: {
                         if isSelecting {
@@ -479,6 +431,7 @@ struct DaySectionView: View {
                     // Simplify: no per-item context menu in list for lighter UI
                 }
             }
+            .padding(.horizontal, PhotoSheetStyle.sectionHorizontalPadding)
         }
         .modifier(DayCachingModifier(viewModel: viewModel, assets: group.assets))
     }
@@ -488,13 +441,20 @@ private struct DayCachingModifier: ViewModifier {
     @ObservedObject var viewModel: PhotoSheetViewModel
     let assets: [PHAsset]
     @State private var didCache = false
+    private let targetSize = CGSize(width: 160, height: 160)
     func body(content: Content) -> some View {
         content
             .onAppear {
-                // Avoid start/stop thrash during sticky headers: cache once
+                // Start bounded preheat while this section is visible.
                 if !didCache {
-                    viewModel.startCaching(assets: assets, targetSize: CGSize(width: 200, height: 200))
+                    viewModel.startCaching(assets: assets, targetSize: targetSize)
                     didCache = true
+                }
+            }
+            .onDisappear {
+                if didCache {
+                    viewModel.stopCaching(assets: assets, targetSize: targetSize)
+                    didCache = false
                 }
             }
     }

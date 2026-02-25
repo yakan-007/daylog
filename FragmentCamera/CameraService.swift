@@ -5,6 +5,13 @@ import Photos
 import CoreLocation
 import OSLog
 
+enum CaptureReadinessReason: Equatable {
+    case warmingUp
+    case permissionsMissing
+    case interrupted
+    case ready
+}
+
 class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, CLLocationManagerDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     //
     // Operation API (UI-facing):
@@ -23,12 +30,18 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     @Published var isSessionReady = false
     @Published var isSessionInterrupted = false
     @Published var permissionDenied = false
+    @Published var permissionAlertTitle = "アクセスが必要です"
+    @Published var permissionAlertMessage = ""
     @Published var isTorchAvailable = false
     @Published var cameraPosition: AVCaptureDevice.Position = .back
     @Published var isReadyToRecord = false
-    // Default off to avoid slow post-processing between consecutive shots
-    @AppStorage("isDateStampEnabled") private var isDateStampEnabled: Bool = false
-    @AppStorage("dateStampFormat") private var dateStampFormat: String = "yy.MM.dd"
+    @Published var captureReadinessReason: CaptureReadinessReason = .warmingUp
+    @Published var lastSavedAssetLocalIdentifier: String?
+    // Default on for release build UX; users can disable in Settings.
+    @AppStorage("isDateStampEnabled") private var isDateStampEnabled: Bool = true
+    @AppStorage("dateStampFormat") private var dateStampFormat: String = DateStampFormatter.compactDateTime
+    @AppStorage("dateStampZeroPadded") private var dateStampZeroPadded: Bool = false
+    @AppStorage("dateStampSize") private var dateStampSize: String = DateStampStyle.medium
     
     var session = AVCaptureSession()
     private var device: AVCaptureDevice?
@@ -46,14 +59,25 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     private var warmFrameCount = 0
     private var lastConfigChangeAt: Date = Date.distantPast
     private var stableConsecutiveFrames = 0
+    private let minimumWarmFramesForReady = 3
+    private let minimumStableFramesForReady = 2
+    private let warmupTimeoutSeconds: TimeInterval = 1.0
     private let sessionQueue = DispatchQueue(label: "CameraService.SessionQueue")
     private let sessionQueueSpecific = DispatchSpecificKey<Void>()
     private var pendingStart: (duration: TimeInterval, orientation: UIDeviceOrientation)?
     private var currentPlannedDuration: TimeInterval?
+    private let practicalMaxZoomFactor: CGFloat = 10.0
+    private let postProcessPipeline = VideoPostProcessPipeline()
+    private let assetLibraryWriter = AssetLibraryWriter(albumName: "daylog")
     // no export UI/monitoring
 
     override init() {
         super.init()
+        // Migrate older installs that never stored this key (legacy default was OFF).
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "isDateStampEnabled") == nil {
+            defaults.set(true, forKey: "isDateStampEnabled")
+        }
         // Mark sessionQueue for reentrancy checks
         sessionQueue.setSpecific(key: sessionQueueSpecific, value: ())
         locationManager.delegate = self
@@ -70,11 +94,33 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
+    private func updateCaptureReadiness(_ reason: CaptureReadinessReason) {
+        DispatchQueue.main.async {
+            guard self.captureReadinessReason != reason else { return }
+            self.captureReadinessReason = reason
+            switch reason {
+            case .warmingUp:
+                AppLog.capture.info("capture_state=warming_up")
+            case .permissionsMissing:
+                AppLog.capture.warning("capture_state=permissions_missing")
+            case .interrupted:
+                AppLog.capture.warning("capture_state=interrupted")
+            case .ready:
+                AppLog.capture.info("capture_state=ready")
+            }
+        }
+    }
+
     func setupSession() {
 #if targetEnvironment(simulator)
         AppLog.capture.debug("Simulator detected; skipping real camera setup.")
-        DispatchQueue.main.async { self.isSessionReady = true }
+        DispatchQueue.main.async {
+            self.isSessionReady = true
+            self.isReadyToRecord = true
+            self.updateCaptureReadiness(.ready)
+        }
 #else
+        updateCaptureReadiness(.warmingUp)
         // Configure audio session for video recording
         configureAudioSession()
 
@@ -179,15 +225,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
 
     private func configureAudioSession() {
         #if !targetEnvironment(simulator)
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // Use playAndRecord to allow shutter/feedback; tune for video capture
-            try session.setCategory(.playAndRecord, options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setMode(.videoRecording)
-            try session.setActive(true)
-        } catch {
-            AppLog.capture.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
-        }
+        AudioSessionMode.activateCapture()
         #endif
     }
 
@@ -197,6 +235,9 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     }
 
     func startRecording(duration: TimeInterval, orientation: UIDeviceOrientation) {
+        guard !isSessionInterrupted else { return }
+        AppLog.capture.info("capture.start duration=\(duration, privacy: .public)")
+        configureAudioSession()
         locationManager.startUpdatingLocation()
         locationManager.requestLocation()
         recordingTimer?.invalidate()
@@ -223,6 +264,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         #if !targetEnvironment(simulator)
         sessionQueue.async {
             guard self.movieOutput.isRecording == false, let output = self.movieOutput.connection(with: .video) else { return }
+            self.ensureAudioInputAttachedIfNeeded()
             // Prefer rotation angle (iOS 17+/supported devices). Avoid deprecated orientation APIs.
             if let rc = self.rotationCoordinator {
                 let angle = rc.videoRotationAngleForHorizonLevelCapture
@@ -235,6 +277,32 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         }
         // Defer isRecording state and timer scheduling to didStartRecording delegate for accurate syncing
         #endif
+    }
+
+    private func ensureAudioInputAttachedIfNeeded() {
+        let hasAudioInput = session.inputs.contains { input in
+            guard let deviceInput = input as? AVCaptureDeviceInput else { return false }
+            return deviceInput.device.hasMediaType(.audio)
+        }
+        if hasAudioInput { return }
+        guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+            AppLog.capture.error("No audio device found when ensuring input before recording.")
+            return
+        }
+        do {
+            let input = try AVCaptureDeviceInput(device: audioDevice)
+            guard session.canAddInput(input) else {
+                AppLog.capture.warning("Cannot add audio input before recording.")
+                return
+            }
+            session.beginConfiguration()
+            session.addInput(input)
+            session.commitConfiguration()
+            audioInput = input
+            AppLog.capture.info("Audio input reattached before recording.")
+        } catch {
+            AppLog.capture.error("Failed to reattach audio input: \(error.localizedDescription)")
+        }
     }
 
     private func handleSessionDidStartRunning() {
@@ -297,6 +365,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
                     self.cameraPosition = newDevice.position
                     self.isTorchAvailable = newDevice.hasTorch && newDevice.position == .back
                     self.isReadyToRecord = false
+                    self.updateCaptureReadiness(.warmingUp)
                     self.warmFrameCount = 0
                     self.stableConsecutiveFrames = 0
                     self.lastConfigChangeAt = Date()
@@ -338,11 +407,13 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
                 if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = devicePoint; device.exposureMode = .autoExpose }
                 device.unlockForConfiguration()
                 completion?(true)
-            } catch { AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)") }
-            if completion != nil { completion?(false) }
+            } catch {
+                AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)")
+                completion?(false)
+            }
         }
         #else
-        AppLog.capture.debug("SIMULATOR: Focus requested at \(point, privacy: .public). No action taken.")
+        AppLog.capture.debug("SIMULATOR: Focus requested at x=\(point.x, privacy: .public), y=\(point.y, privacy: .public). No action taken.")
         completion?(true)
         #endif
     }
@@ -358,8 +429,10 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
                 device.setExposureTargetBias(clampedBias, completionHandler: nil)
                 device.unlockForConfiguration()
                 completion?(true)
-            } catch { AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)") }
-            if completion != nil { completion?(false) }
+            } catch {
+                AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)")
+                completion?(false)
+            }
         }
         #else
         AppLog.capture.debug("SIMULATOR: Exposure bias set to \(bias, privacy: .public). No action taken.")
@@ -374,12 +447,15 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
             guard let device = self.device else { return }
             do {
                 try device.lockForConfiguration()
-                let clamped = max(device.minAvailableVideoZoomFactor, min(factor, device.maxAvailableVideoZoomFactor))
+                let upper = min(device.maxAvailableVideoZoomFactor, self.practicalMaxZoomFactor)
+                let clamped = max(device.minAvailableVideoZoomFactor, min(factor, upper))
                 device.videoZoomFactor = clamped
                 device.unlockForConfiguration()
                 completion?(true)
-            } catch { AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)") }
-            if completion != nil { completion?(false) }
+            } catch {
+                AppLog.capture.error("Failed to lock device for configuration: \(error.localizedDescription)")
+                completion?(false)
+            }
         }
         #else
         AppLog.capture.debug("SIMULATOR: Zoom requested with factor \(factor, privacy: .public). No action taken.")
@@ -403,8 +479,8 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
                 completion?(true)
             } catch {
                 AppLog.capture.error("Failed to set torch mode: \(error.localizedDescription)")
+                completion?(false)
             }
-            if completion != nil { completion?(false) }
         }
         #else
         AppLog.capture.debug("SIMULATOR: Torch toggle to \(on, privacy: .public) ignored.")
@@ -415,7 +491,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     // Snapshot helpers (read-only). Safe to call from UI for quick reads.
     var zoomRange: ClosedRange<CGFloat> {
         let minZ = device?.minAvailableVideoZoomFactor ?? 1.0
-        let maxZ = device?.maxAvailableVideoZoomFactor ?? 1.0
+        let maxZ = min(device?.maxAvailableVideoZoomFactor ?? 1.0, practicalMaxZoomFactor)
         return minZ...maxZ
     }
 
@@ -430,214 +506,107 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
             if (error as NSError).code != -11806 { AppLog.capture.error("Error recording video: \(error.localizedDescription)") }
             return
         }
+        AppLog.capture.info("capture.stop")
         let tagLocation = bestRecentLocation(maxAge: 60, maxHAcc: 100)
-        if isDateStampEnabled {
-            addDateStamp(to: outputFileURL) { stampedVideoURL in
-                guard let stampedVideoURL = stampedVideoURL else { return }
-                self.saveVideoToLibrary(url: stampedVideoURL, location: tagLocation)
-            }
-        } else {
-            saveVideoToLibrary(url: outputFileURL, location: tagLocation)
-        }
-    }
-    
-    private func getAlbum(completion: @escaping (PHAssetCollection?) -> Void) {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", "daylog")
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-        if let album = collections.firstObject { completion(album) } 
-        else {
-            var albumPlaceholder: PHObjectPlaceholder?
-            PHPhotoLibrary.shared().performChanges({
-                let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: "daylog")
-                albumPlaceholder = request.placeholderForCreatedAssetCollection
-            }) { success, error in
-                if success, let placeholder = albumPlaceholder {
-                    let newCollections = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [placeholder.localIdentifier], options: nil)
-                    completion(newCollections.firstObject)
-                } else {
-                    AppLog.export.error("Error creating album: \(error?.localizedDescription ?? "Unknown error")"); completion(nil)
-                }
-            }
-        }
-    }
-
-    private func saveVideoToLibrary(url: URL, location: CLLocation?) {
-        getAlbum { album in
-            guard let album = album else { AppLog.export.error("Could not get or create album."); return }
-            PHPhotoLibrary.shared().performChanges({
-                guard let assetRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url) else { return }
-                assetRequest.location = location
-                guard let assetPlaceholder = assetRequest.placeholderForCreatedAsset, let albumChangeRequest = PHAssetCollectionChangeRequest(for: album) else { return }
-                albumChangeRequest.addAssets([assetPlaceholder] as NSArray)
-            }) { success, error in
-                if success {
-                    AppLog.export.info("Video saved successfully and added to album.")
-                    // Cleanup the temporary file
-                    try? FileManager.default.removeItem(at: url)
-                } else {
-                    AppLog.export.error("Error saving video or adding to album: \(error?.localizedDescription ?? "Unknown error")")
-                }
-                // Stop location updates after save completes
-                self.locationManager.stopUpdatingLocation()
-            }
-        }
-    }
-
-    private func trimHeadAndSave(url: URL) {
-        let tagLocation = bestRecentLocation(maxAge: 60, maxHAcc: 100)
-        Task {
-            let asset = AVURLAsset(url: url)
+        AppLog.save.info("save.begin stamp_enabled=\(self.isDateStampEnabled, privacy: .public)")
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                let duration = try await asset.load(.duration)
-                let trim = CMTime(seconds: 0.25, preferredTimescale: 600)
-                let start = CMTimeCompare(duration, trim) > 0 ? trim : .zero
-                let timeRange = CMTimeRange(start: start, duration: CMTimeSubtract(duration, start))
-                let outBase = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-                guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else { await MainActor.run { self.saveVideoToLibrary(url: url, location: tagLocation) }; return }
-                let type: AVFileType = exporter.supportedFileTypes.contains(.mp4) ? .mp4 : .mov
-                let outURL = outBase.appendingPathExtension(type == .mp4 ? "mp4" : "mov")
-                exporter.outputURL = outURL
-                exporter.outputFileType = type
-                exporter.timeRange = timeRange
-                let taskID = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "TrimSave", expirationHandler: nil) }
-                do {
-                    try await exporter.export(to: outURL, as: type)
-                    await MainActor.run {
-                        self.saveVideoToLibrary(url: outURL, location: tagLocation)
-                        UIApplication.shared.endBackgroundTask(taskID)
-                    }
-                } catch {
-                    await MainActor.run {
-                        self.saveVideoToLibrary(url: url, location: tagLocation)
-                        UIApplication.shared.endBackgroundTask(taskID)
-                    }
-                }
+                let rawAsset = AVURLAsset(url: outputFileURL)
+                let rawAudioTracks = try await rawAsset.loadTracks(withMediaType: .audio)
+                AppLog.save.info("save.raw.audio_tracks=\(rawAudioTracks.count, privacy: .public)")
             } catch {
-                await MainActor.run { self.saveVideoToLibrary(url: url, location: tagLocation) }
+                AppLog.save.warning("save.raw.audio_probe_failed reason=\(error.localizedDescription, privacy: .public)")
             }
+            let context = VideoPostProcessContext(
+                stampEnabled: self.isDateStampEnabled,
+                stampDate: Date(),
+                format: self.dateStampFormat,
+                zeroPadded: self.dateStampZeroPadded,
+                sizeKey: self.dateStampSize
+            )
+
+            do {
+                let processed = try await self.postProcessPipeline.processRecordedVideo(inputURL: outputFileURL, context: context)
+                let savedIdentifier = try await self.assetLibraryWriter.saveVideo(url: processed.url, location: tagLocation)
+                AppLog.save.info("save.success stamp_applied=\(processed.stampApplied, privacy: .public) fallback=\(processed.usedFallback, privacy: .public)")
+                await MainActor.run {
+                    self.lastSavedAssetLocalIdentifier = savedIdentifier
+                }
+            } catch AssetLibraryWriterError.permissionDenied {
+                AppLog.save.error("save.fail reason=permission_denied")
+                self.showPermissionAlert(
+                    title: "写真へのアクセスが必要です",
+                    message: "動画を保存するには、設定アプリから写真へのアクセスを許可してください。"
+                )
+            } catch {
+                AppLog.save.error("save.fail reason=\(error.localizedDescription, privacy: .public)")
+            }
+            self.locationManager.stopUpdatingLocation()
         }
     }
-    
-    private func addDateStamp(to videoURL: URL, completion: @escaping (URL?) -> Void) {
-        let asset = AVURLAsset(url: videoURL)
-            Task {
-                do {
-                    guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else { completion(nil); return }
-                    let composition = AVMutableComposition()
-                    guard let compositionTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { completion(nil); return }
-                let duration = try await asset.load(.duration)
-                try compositionTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: videoTrack, at: .zero)
-
-                    let naturalSize = try await videoTrack.load(.naturalSize)
-                    let preferredTransform = try await videoTrack.load(.preferredTransform)
-                    let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
-                    let renderSize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
-
-                    // Text layer setup (top-right, monospaced, shadow)
-                    let textLayer = CATextLayer()
-                    let dateFormatter = DateFormatter(); dateFormatter.dateFormat = dateStampFormat
-                    let fontSize = renderSize.height * 0.055
-                    textLayer.string = dateFormatter.string(from: Date())
-                    textLayer.font = "Menlo-Bold" as CFTypeRef
-                    textLayer.fontSize = fontSize
-                    textLayer.foregroundColor = UIColor.white.cgColor
-                    textLayer.backgroundColor = UIColor.clear.cgColor
-                    textLayer.alignmentMode = .right
-                    textLayer.shadowOpacity = 0.6
-                    textLayer.shadowRadius = 2
-                    textLayer.shadowOffset = CGSize(width: 0, height: 1)
-                    let scale = await MainActor.run { UIScreen.main.scale }
-                    textLayer.contentsScale = scale
-                    let topMargin = renderSize.height * 0.04
-                    let rightMargin = renderSize.width * 0.05
-                    textLayer.frame = CGRect(x: 0,
-                                             y: topMargin,
-                                             width: renderSize.width - rightMargin,
-                                             height: renderSize.height * 0.1)
-
-                    // Layers and composition
-                let videoLayer = CALayer(); videoLayer.frame = CGRect(origin: .zero, size: renderSize)
-                let overlayLayer = CALayer(); overlayLayer.frame = CGRect(origin: .zero, size: renderSize); overlayLayer.addSublayer(textLayer)
-                // Parent layer must contain both videoLayer and overlay
-                let parentLayer = CALayer(); parentLayer.frame = CGRect(origin: .zero, size: renderSize)
-                parentLayer.addSublayer(videoLayer)
-                parentLayer.addSublayer(overlayLayer)
-                let videoComposition = AVMutableVideoComposition(); videoComposition.renderSize = renderSize; videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
-                videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parentLayer)
-                let instruction = AVMutableVideoCompositionInstruction(); instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
-                // Normalize upside-down orientation defensively
-                var finalTransform = preferredTransform
-                let angle = atan2(finalTransform.b, finalTransform.a) // radians
-                let deg = (angle * 180 / .pi).truncatingRemainder(dividingBy: 360)
-                if abs(abs(deg) - 180) < 45 { // around 180 degrees
-                    finalTransform = finalTransform.rotated(by: .pi)
-                    finalTransform = finalTransform.translatedBy(x: renderSize.width, y: renderSize.height)
-                }
-                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionTrack); layerInstruction.setTransform(finalTransform, at: .zero)
-                instruction.layerInstructions = [layerInstruction]; videoComposition.instructions = [instruction]
-                    // Show date only at start, then fade out
-                    let fade = CABasicAnimation(keyPath: "opacity")
-                    fade.fromValue = 1.0
-                    fade.toValue = 0.0
-                    fade.beginTime = AVCoreAnimationBeginTimeAtZero + 2.0
-                    fade.duration = 0.5
-                    fade.fillMode = .forwards
-                    fade.isRemovedOnCompletion = false
-                    textLayer.add(fade, forKey: "fade")
-
-                    // Export
-                    let exportBaseURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-                    guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else { completion(nil); return }
-                    exporter.videoComposition = videoComposition
-                    let supported = exporter.supportedFileTypes
-                    let (outType, outURL): (AVFileType, URL) = {
-                        if supported.contains(.mp4) { return (.mp4, exportBaseURL.appendingPathExtension("mp4")) }
-                        if supported.contains(.mov) { return (.mov, exportBaseURL.appendingPathExtension("mov")) }
-                        if let first = supported.first { return (first, exportBaseURL.appendingPathExtension(first.rawValue)) }
-                        return (.mov, exportBaseURL.appendingPathExtension("mov"))
-                    }()
-
-                    let taskID = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "StampExport", expirationHandler: nil) }
-                    do {
-                        try await exporter.export(to: outURL, as: outType)
-                        try? FileManager.default.removeItem(at: videoURL)
-                        completion(outURL)
-                    } catch {
-                        AppLog.export.error("Failed to export (async): \(error.localizedDescription)")
-                        completion(nil)
-                    }
-                    await MainActor.run { UIApplication.shared.endBackgroundTask(taskID) }
-                } catch {
-                    AppLog.export.error("Failed preparing composition: \(error.localizedDescription)")
-                    completion(nil)
-                }
-            }
-    }
-    
     func checkForPermissions() {
         locationManager.requestWhenInUseAuthorization()
+        checkPhotoLibraryPermission()
         #if targetEnvironment(simulator)
+        updateCaptureReadiness(.warmingUp)
         setupSession()
         #else
         let videoAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
 
         if videoAuthStatus == .authorized && audioAuthStatus == .authorized {
+            updateCaptureReadiness(.warmingUp)
             setupSession()
         } else {
             AVCaptureDevice.requestAccess(for: .video) { videoGranted in
                 AVCaptureDevice.requestAccess(for: .audio) { audioGranted in
                     if videoGranted && audioGranted {
+                        self.updateCaptureReadiness(.warmingUp)
                         DispatchQueue.main.async { self.setupSession() }
                     } else {
                         AppLog.permission.error("Camera or microphone access denied by user.")
-                        DispatchQueue.main.async { self.permissionDenied = true }
+                        self.updateCaptureReadiness(.permissionsMissing)
+                        self.showPermissionAlert(
+                            title: "カメラへのアクセスが必要です",
+                            message: "このアプリの撮影機能を利用するには、設定アプリからカメラとマイクへのアクセスを許可してください。"
+                        )
                     }
                 }
             }
         }
         #endif
+    }
+
+    private func checkPhotoLibraryPermission() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            return
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                if newStatus != .authorized && newStatus != .limited {
+                    self.showPermissionAlert(
+                        title: "写真へのアクセスが必要です",
+                        message: "撮影動画の保存や一覧表示のため、設定アプリから写真へのアクセスを許可してください。"
+                    )
+                }
+            }
+        default:
+            updateCaptureReadiness(.permissionsMissing)
+            showPermissionAlert(
+                title: "写真へのアクセスが必要です",
+                message: "撮影動画の保存や一覧表示のため、設定アプリから写真へのアクセスを許可してください。"
+            )
+        }
+    }
+
+    private func showPermissionAlert(title: String, message: String) {
+        DispatchQueue.main.async {
+            self.permissionAlertTitle = title
+            self.permissionAlertMessage = message
+            self.permissionDenied = true
+        }
     }
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -660,7 +629,18 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
 
     // MARK: - Session interruption handling
     @objc private func handleSessionInterruption(_ notification: Notification) {
-        DispatchQueue.main.async { self.isSessionInterrupted = true }
+        DispatchQueue.main.async {
+            self.isSessionInterrupted = true
+            self.isReadyToRecord = false
+            self.warmFrameCount = 0
+            self.stableConsecutiveFrames = 0
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = nil
+            self.currentPlannedDuration = nil
+            self.pendingStart = nil
+            self.isRecording = false
+        }
+        updateCaptureReadiness(.interrupted)
         if let userInfo = notification.userInfo,
            let reasonValue = userInfo[AVCaptureSessionInterruptionReasonKey] as? Int,
            let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) {
@@ -670,7 +650,13 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         }
     }
     @objc private func handleSessionInterruptionEnded(_ notification: Notification) {
-        DispatchQueue.main.async { self.isSessionInterrupted = false }
+        DispatchQueue.main.async {
+            self.isSessionInterrupted = false
+            self.isReadyToRecord = false
+            self.warmFrameCount = 0
+            self.stableConsecutiveFrames = 0
+        }
+        updateCaptureReadiness(.warmingUp)
         sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } }
         AppLog.capture.info("Session interruption ended")
     }
@@ -678,6 +664,17 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError {
             AppLog.capture.error("Session runtime error: \(error.localizedDescription)")
         }
+        DispatchQueue.main.async {
+            self.isReadyToRecord = false
+            self.warmFrameCount = 0
+            self.stableConsecutiveFrames = 0
+            self.recordingTimer?.invalidate()
+            self.recordingTimer = nil
+            self.currentPlannedDuration = nil
+            self.pendingStart = nil
+            self.isRecording = false
+        }
+        updateCaptureReadiness(.warmingUp)
         sessionQueue.async { self.session.startRunning() }
     }
 
@@ -695,16 +692,43 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         } else {
             stableConsecutiveFrames += 1
         }
-        // Require a minimum number of frames and several consecutive stable frames
-        if warmFrameCount >= 5 && stableConsecutiveFrames >= 5 {
-            DispatchQueue.main.async {
-                self.isReadyToRecord = true
-                if let pending = self.pendingStart {
-                    self.pendingStart = nil
-                    self.startRecordingNow(duration: pending.duration, orientation: pending.orientation)
-                }
+        // Prefer quick readiness once a few stable frames arrive.
+        if warmFrameCount >= minimumWarmFramesForReady && stableConsecutiveFrames >= minimumStableFramesForReady {
+            markReadyToRecord()
+            return
+        }
+
+        // Fail-safe: if warm-up takes too long, unlock capture to improve perceived startup speed.
+        if Date().timeIntervalSince(lastConfigChangeAt) >= warmupTimeoutSeconds && warmFrameCount >= 2 {
+            AppLog.capture.info("warmup.timeout_reached seconds=\(self.warmupTimeoutSeconds, privacy: .public)")
+            markReadyToRecord()
+        }
+    }
+
+    private func markReadyToRecord() {
+        DispatchQueue.main.async {
+            guard !self.isReadyToRecord else { return }
+            self.isReadyToRecord = true
+            self.updateCaptureReadiness(.ready)
+            if let pending = self.pendingStart {
+                self.pendingStart = nil
+                self.startRecordingNow(duration: pending.duration, orientation: pending.orientation)
             }
         }
+    }
+}
+
+extension CameraService: CaptureCommand {
+    var captureStateSnapshot: CaptureStateSnapshot {
+        CaptureStateSnapshot(
+            isRecording: isRecording,
+            isSessionReady: isSessionReady,
+            isSessionInterrupted: isSessionInterrupted,
+            isReadyToRecord: isReadyToRecord,
+            isTorchAvailable: isTorchAvailable,
+            cameraPosition: cameraPosition,
+            readinessReason: captureReadinessReason
+        )
     }
 }
 

@@ -23,6 +23,10 @@ struct DayCellView: View {
                 // Background
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color(uiColor: .secondarySystemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(AppTheme.stroke, lineWidth: 1)
+                    )
 
                 if let date = date, let rep = assets.first {
                     // Thumbnail
@@ -106,12 +110,13 @@ struct MonthGridView: View {
         GeometryReader { proxy in
             let spacing: CGFloat = 6
             ScrollView {
-                LazyVStack(spacing: 16) {
+                LazyVStack(spacing: PhotoSheetStyle.sectionSpacing) {
                     ForEach(months) { month in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .center, spacing: 12) {
                                 Text(String(format: "%d年%d月", month.year, month.month))
-                                    .font(.system(size: 20, weight: .bold))
+                                    .font(AppTheme.titleFont)
+                                    .foregroundColor(AppTheme.onGlass)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.85)
                                     .allowsTightening(true)
@@ -120,9 +125,8 @@ struct MonthGridView: View {
                             }
                             .padding(.vertical, 8)
                             .padding(.horizontal, 14)
-                            .background(.thinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .padding(.horizontal, 10)
+                            .photoSheetCard(radius: PhotoSheetStyle.headerCornerRadius)
+                            .padding(.horizontal, PhotoSheetStyle.sectionHorizontalPadding)
                             // 7-column calendar for all widths
                                 let columnsCount = 7
                                 let totalSpacing = spacing * CGFloat(columnsCount - 1)
@@ -134,7 +138,7 @@ struct MonthGridView: View {
                                     ForEach(weekdaySymbols(), id: \.self) { wd in
                                         Text(wd)
                                             .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(AppTheme.onGlass.opacity(0.72))
                                             .frame(width: cell)
                                     }
                                 }
@@ -152,7 +156,11 @@ struct MonthGridView: View {
                                         let date = Calendar.current.date(byAdding: .day, value: d - 1, to: month.firstDate)!
                                         DayCellView(date: date, assets: assets, viewModel: viewModel)
                                             .frame(width: cell)
-                                            .onTapGesture { onTapDay(sortedOldest(assets)) }
+                                            .opacity(assets.isEmpty ? 0.9 : 1.0)
+                                            .onTapGesture {
+                                                guard !assets.isEmpty else { return }
+                                                onTapDay(sortedOldest(assets))
+                                            }
                                             .contextMenu {
                                                 if !assets.isEmpty {
                                                     Button { onTapDay(sortedOldest(assets)) } label: { Label("再生", systemImage: "play.fill") }
@@ -162,7 +170,7 @@ struct MonthGridView: View {
                                     }
                                 }
                         }
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, AppTheme.spacingS)
                         .onAppear {
                             // Pre-cache month assets with a reasonable default size for current width
                             let approxCell = max(100, min(180, proxy.size.width / 3 - spacing * 2))
@@ -176,6 +184,7 @@ struct MonthGridView: View {
                         }
                     }
                 }
+                .padding(.bottom, PhotoSheetStyle.contentBottomInset)
             }
         }
     }
@@ -189,10 +198,9 @@ struct MonthGridView: View {
     }
 
     private func weekdaySymbols() -> [String] {
-        let df = DateFormatter(); df.locale = Locale.current
-        // Start from calendar.firstWeekday to match layout
-        let symbols = df.shortWeekdaySymbols ?? ["日","月","火","水","木","金","土"]
-        let start = Calendar.current.firstWeekday - 1 // convert to 0-based
+        // Keep Japanese weekday labels for a consistent Japanese UI.
+        let symbols = ["日", "月", "火", "水", "木", "金", "土"]
+        let start = Calendar.current.firstWeekday - 1
         return Array(symbols[start...] + symbols[..<start])
     }
 

@@ -7,9 +7,11 @@ import MobileCoreServices
 struct ShareDayView: View {
     let assets: [PHAsset]
     @State private var exportURL: URL? = nil
-    @State private var exporting = true
     @State private var progress: Double = 0.0
-    @AppStorage("dateStampFormat") private var dateStampFormat: String = "yy.MM.dd"
+    @State private var exportStatusText: String = "準備中..."
+    @AppStorage("dateStampFormat") private var dateStampFormat: String = DateStampFormatter.compactDateTime
+    @AppStorage("dateStampZeroPadded") private var dateStampZeroPadded: Bool = false
+    @AppStorage("dateStampSize") private var dateStampSize: String = DateStampStyle.medium
 
     var body: some View {
         Group {
@@ -30,7 +32,7 @@ struct ShareDayView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                     }
-                    Text("書き出し中...")
+                    Text(exportStatusText)
                         .foregroundColor(.white.opacity(0.9))
                 }
                 .padding(20)
@@ -39,29 +41,65 @@ struct ShareDayView: View {
                 .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 8)
             }
         }
-        .onAppear { exportDayCompilation(assets: assets, format: dateStampFormat) { url in
-            self.exportURL = url
-            self.exporting = false
-        } }
+        .onAppear {
+            exportDayCompilation(
+                assets: assets,
+                format: dateStampFormat,
+                zeroPadded: dateStampZeroPadded,
+                sizeKey: dateStampSize,
+                onProgress: { p in
+                    DispatchQueue.main.async {
+                        self.progress = max(0, min(1, p))
+                        if p < 0.1 { self.exportStatusText = "素材を読み込み中..." }
+                        else if p < 0.6 { self.exportStatusText = "動画を結合中..." }
+                        else if p < 1.0 { self.exportStatusText = "書き出し中..." }
+                        else { self.exportStatusText = "完了" }
+                    }
+                }
+            ) { url in
+                DispatchQueue.main.async {
+                    self.exportURL = url
+                    self.progress = (url == nil) ? 0 : 1
+                    if url == nil { self.exportStatusText = "書き出しに失敗しました" }
+                }
+            }
+        }
     }
 }
 
-private func exportDayCompilation(assets: [PHAsset], format: String, completion: @escaping (URL?) -> Void) {
+private func exportDayCompilation(
+    assets: [PHAsset],
+    format: String,
+    zeroPadded: Bool,
+    sizeKey: String,
+    onProgress: @escaping (Double) -> Void,
+    completion: @escaping (URL?) -> Void
+) {
+    onProgress(0.02)
     // Fetch AVAssets for all PHAssets
     let options = PHVideoRequestOptions()
     options.isNetworkAccessAllowed = true
     let manager = PHImageManager.default()
-    var avAssets: [AVAsset] = []
+    let collectQueue = DispatchQueue(label: "ShareDayView.AssetCollect")
+    var orderedAssets: [AVAsset?] = Array(repeating: nil, count: assets.count)
     let group = DispatchGroup()
-    for asset in assets {
+    let totalCount = max(1, assets.count)
+    for (index, asset) in assets.enumerated() {
         group.enter()
         manager.requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-            if let avAsset = avAsset { avAssets.append(avAsset) }
+            if let avAsset = avAsset {
+                collectQueue.sync {
+                    orderedAssets[index] = avAsset
+                }
+            }
+            onProgress(0.05 + (Double(index + 1) / Double(totalCount)) * 0.15)
             group.leave()
         }
     }
     group.notify(queue: .global(qos: .userInitiated)) {
+        let avAssets = collectQueue.sync { orderedAssets.compactMap { $0 } }
         guard !avAssets.isEmpty else { completion(nil); return }
+        onProgress(0.25)
         let composition = AVMutableComposition()
         guard let compTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { completion(nil); return }
         let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
@@ -82,7 +120,7 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                     // Build a single layerInstruction for the compTrack and set per-segment transforms
                     let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compTrack)
 
-                    for asset in avAssets {
+                    for (i, asset) in avAssets.enumerated() {
                         if let vTrack = try await asset.loadTracks(withMediaType: .video).first {
                             let duration = try await asset.load(.duration)
                             try compTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: vTrack, at: cursor)
@@ -107,6 +145,7 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                             layerInstruction.setTransform(t, at: cursor)
 
                             cursor = CMTimeAdd(cursor, duration)
+                            onProgress(0.25 + (Double(i + 1) / Double(max(1, avAssets.count))) * 0.25)
                         }
                     }
 
@@ -124,11 +163,14 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                     let textLayer = CATextLayer()
                     // Use the day's date (earliest asset) for the overlay
                     let overlayDate: Date = (assets.compactMap { $0.creationDate }.sorted().first) ?? Date()
-                    let df = DateFormatter(); df.dateFormat = format
-                    textLayer.string = df.string(from: overlayDate)
+                    textLayer.string = DateStampFormatter.string(
+                        from: overlayDate,
+                        storedFormat: format,
+                        zeroPadded: zeroPadded
+                    )
                     textLayer.alignmentMode = .right
                     textLayer.font = "Menlo-Bold" as CFTypeRef
-                    textLayer.fontSize = renderSize.height * 0.055
+                    textLayer.fontSize = DateStampStyle.fontSize(for: renderSize, sizeKey: sizeKey)
                     textLayer.foregroundColor = UIColor.white.cgColor
                     textLayer.backgroundColor = UIColor.clear.cgColor
                     textLayer.shadowOpacity = 0.6
@@ -136,9 +178,14 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                     textLayer.shadowOffset = CGSize(width: 0, height: 1)
                     let scale = await MainActor.run { UIScreen.main.scale }
                     textLayer.contentsScale = scale
-                    let topMargin = renderSize.height * 0.04
-                    let rightMargin = renderSize.width * 0.05
-                    textLayer.frame = CGRect(x: 0, y: topMargin, width: renderSize.width - rightMargin, height: renderSize.height * 0.1)
+                    let topMargin = DateStampStyle.topMargin(for: renderSize)
+                    let rightMargin = DateStampStyle.rightMargin(for: renderSize)
+                    textLayer.frame = CGRect(
+                        x: 0,
+                        y: topMargin,
+                        width: renderSize.width - rightMargin,
+                        height: DateStampStyle.textHeight(for: renderSize, sizeKey: sizeKey)
+                    )
                     overlayLayer.addSublayer(textLayer)
                     let parentLayer = CALayer(); parentLayer.frame = CGRect(origin: .zero, size: renderSize)
                     parentLayer.addSublayer(videoLayer)
@@ -152,16 +199,49 @@ private func exportDayCompilation(assets: [PHAsset], format: String, completion:
                     fade.isRemovedOnCompletion = false
                     textLayer.add(fade, forKey: "fade")
 
-                    let outBase = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-                    guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else { completion(nil); return }
-                    exporter.videoComposition = videoComposition
-                    let fileType: AVFileType = exporter.supportedFileTypes.contains(.mp4) ? .mp4 : .mov
-                    let outURL = outBase.appendingPathExtension(fileType == .mp4 ? "mp4" : "mov")
-                    // Background task to avoid suspension during export
-                    let taskID = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "DayExport", expirationHandler: nil) }
-                    try await exporter.export(to: outURL, as: fileType)
-                    await MainActor.run { UIApplication.shared.endBackgroundTask(taskID) }
-                    completion(outURL)
+                    func runExport() async throws -> URL {
+                        let outBase = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+                        guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+                            throw NSError(domain: "ShareDayView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create exporter"])
+                        }
+                        exporter.videoComposition = videoComposition
+                        let fileType: AVFileType = exporter.supportedFileTypes.contains(.mp4) ? .mp4 : .mov
+                        let outURL = outBase.appendingPathExtension(fileType == .mp4 ? "mp4" : "mov")
+                        let taskID = await MainActor.run {
+                            UIApplication.shared.beginBackgroundTask(withName: "DayExport", expirationHandler: nil)
+                        }
+                        let progressTask = Task {
+                            while !Task.isCancelled {
+                                let p = 0.55 + Double(exporter.progress) * 0.42
+                                onProgress(min(0.98, max(0.55, p)))
+                                try? await Task.sleep(for: .milliseconds(150))
+                            }
+                        }
+                        let timeoutTask = Task { try? await Task.sleep(for: .seconds(120)); exporter.cancelExport() }
+                        defer {
+                            progressTask.cancel()
+                            timeoutTask.cancel()
+                        }
+                        try await exporter.export(to: outURL, as: fileType)
+                        await MainActor.run { UIApplication.shared.endBackgroundTask(taskID) }
+                        return outURL
+                    }
+
+                    do {
+                        let url = try await runExport()
+                        onProgress(1.0)
+                        completion(url)
+                    } catch {
+                        AppLog.export.error("First export attempt failed: \(error.localizedDescription)")
+                        do {
+                            let url = try await runExport()
+                            onProgress(1.0)
+                            completion(url)
+                        } catch {
+                            AppLog.export.error("Retry export failed: \(error.localizedDescription)")
+                            completion(nil)
+                        }
+                    }
                 } catch {
                     completion(nil)
                 }

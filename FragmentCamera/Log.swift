@@ -6,8 +6,9 @@ enum AppLog {
     private static let subsystem = Bundle.main.bundleIdentifier ?? "FragmentCamera"
 
     static let capture = Logger(subsystem: subsystem, category: "capture")
+    static let save = Logger(subsystem: subsystem, category: "save")
+    static let player = Logger(subsystem: subsystem, category: "player")
     static let export = Logger(subsystem: subsystem, category: "export")
     static let permission = Logger(subsystem: subsystem, category: "permission")
     static let location = Logger(subsystem: subsystem, category: "location")
 }
-

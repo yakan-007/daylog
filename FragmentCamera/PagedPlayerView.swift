@@ -24,6 +24,8 @@ struct AssetPlayerLayerView: UIViewRepresentable {
     let asset: PHAsset
     let isActive: Bool
 
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> PlayerContainerView {
         let v = PlayerContainerView()
         v.backgroundColor = .black
@@ -32,16 +34,44 @@ struct AssetPlayerLayerView: UIViewRepresentable {
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
         if isActive {
-            // Load and play
-            let options = PHVideoRequestOptions(); options.isNetworkAccessAllowed = true; options.deliveryMode = .automatic
-            PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { item, _ in
+            AudioSessionMode.activatePlayback()
+            if context.coordinator.currentAssetId == asset.localIdentifier { return }
+            context.coordinator.currentAssetId = asset.localIdentifier
+            context.coordinator.cancelPendingRequest()
+            AppLog.player.info("player.load.begin asset=\(asset.localIdentifier, privacy: .public)")
+            let requestId = AssetPlaybackLoader.shared.requestPlayerItem(for: asset, deliveryMode: .automatic, timeout: 15) { result in
                 DispatchQueue.main.async {
-                    guard let item = item else { return }
+                    guard case .success(let item) = result else {
+                        if case .failure(let error) = result {
+                            AppLog.player.error("player.load.fail asset=\(asset.localIdentifier, privacy: .public) reason=\(error.localizedDescription, privacy: .public)")
+                        }
+                        context.coordinator.currentAssetId = nil
+                        return
+                    }
                     uiView.play(item: item)
+                    AppLog.player.info("player.load.success asset=\(asset.localIdentifier, privacy: .public)")
                 }
             }
+            context.coordinator.pendingRequestId = requestId
         } else {
+            context.coordinator.cancelPendingRequest()
+            context.coordinator.currentAssetId = nil
             uiView.pause()
+        }
+    }
+
+    static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: Coordinator) {
+        coordinator.cancelPendingRequest()
+        uiView.pause()
+    }
+
+    final class Coordinator {
+        var pendingRequestId: PHImageRequestID?
+        var currentAssetId: String?
+
+        func cancelPendingRequest() {
+            AssetPlaybackLoader.shared.cancel(pendingRequestId)
+            pendingRequestId = nil
         }
     }
 }
