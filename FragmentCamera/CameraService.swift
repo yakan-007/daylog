@@ -37,6 +37,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     @Published var isReadyToRecord = false
     @Published var captureReadinessReason: CaptureReadinessReason = .warmingUp
     @Published var lastSavedAssetLocalIdentifier: String?
+    @Published var savePhase: CaptureSavePhase = .idle
     // Default on for release build UX; users can disable in Settings.
     @AppStorage("isDateStampEnabled") private var isDateStampEnabled: Bool = true
     @AppStorage("dateStampFormat") private var dateStampFormat: String = DateStampFormatter.compactDateTime
@@ -67,11 +68,33 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     private var pendingStart: (duration: TimeInterval, orientation: UIDeviceOrientation)?
     private var currentPlannedDuration: TimeInterval?
     private let practicalMaxZoomFactor: CGFloat = 10.0
-    private let postProcessPipeline = VideoPostProcessPipeline()
-    private let assetLibraryWriter = AssetLibraryWriter(albumName: "daylog")
+    private let permissionService: CameraPermissionService
+    private let postProcessService: VideoPostProcessingService
+    private let assetLibraryWriter: AssetLibraryWriter
+    private let savePipeline: CaptureSavePipeline
+    lazy var sessionController = CameraSessionController(
+        prepareHandler: { [weak self] in self?.checkForPermissions() },
+        switchHandler: { [weak self] in self?.switchCamera() },
+        torchHandler: { [weak self] enabled in self?.toggleTorch(on: enabled) },
+        zoomHandler: { [weak self] factor in self?.setZoom(factor: factor) },
+        focusHandler: { [weak self] point in self?.focus(at: point) },
+        restartHandler: { [weak self] in self?.restartSession() }
+    )
+    lazy var recordingController = VideoRecordingController(
+        startHandler: { [weak self] duration, orientation in self?.startRecording(duration: duration, orientation: orientation) },
+        stopHandler: { [weak self] in self?.stopRecording() }
+    )
     // no export UI/monitoring
 
-    override init() {
+    init(
+        permissionService: CameraPermissionService = CameraPermissionService(),
+        postProcessService: VideoPostProcessingService = DefaultVideoPostProcessingService(),
+        assetLibraryWriter: AssetLibraryWriter = AssetLibraryWriter(albumName: "daylog")
+    ) {
+        self.permissionService = permissionService
+        self.postProcessService = postProcessService
+        self.assetLibraryWriter = assetLibraryWriter
+        self.savePipeline = CaptureSavePipeline(postProcessService: postProcessService, assetLibraryWriter: assetLibraryWriter)
         super.init()
         // Migrate older installs that never stored this key (legacy default was OFF).
         let defaults = UserDefaults.standard
@@ -229,6 +252,19 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
         #endif
     }
 
+    func resumeCaptureMode() {
+        configureAudioSession()
+        DispatchQueue.main.async {
+            self.isSessionInterrupted = false
+            self.isReadyToRecord = false
+            self.warmFrameCount = 0
+            self.stableConsecutiveFrames = 0
+            self.lastConfigChangeAt = Date()
+        }
+        updateCaptureReadiness(.warmingUp)
+        restartSession()
+    }
+
     // Public restart for UI retry
     func restartSession() {
         sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } }
@@ -332,6 +368,7 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
     // Accurate recording start callback (iOS provides this when file output begins)
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
         DispatchQueue.main.async {
+            self.savePhase = .idle
             self.isRecording = true
             if let d = self.currentPlannedDuration {
                 self.recordingTimer = Timer.scheduledTimer(withTimeInterval: d, repeats: false) { [weak self] _ in self?.stopRecording() }
@@ -507,6 +544,9 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
             return
         }
         AppLog.capture.info("capture.stop")
+        DispatchQueue.main.async {
+            self.savePhase = .recorded
+        }
         let tagLocation = bestRecentLocation(maxAge: 60, maxHAcc: 100)
         AppLog.save.info("save.begin stamp_enabled=\(self.isDateStampEnabled, privacy: .public)")
         Task { [weak self] in
@@ -527,78 +567,62 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
             )
 
             do {
-                let processed = try await self.postProcessPipeline.processRecordedVideo(inputURL: outputFileURL, context: context)
-                let savedIdentifier = try await self.assetLibraryWriter.saveVideo(url: processed.url, location: tagLocation)
-                AppLog.save.info("save.success stamp_applied=\(processed.stampApplied, privacy: .public) fallback=\(processed.usedFallback, privacy: .public)")
                 await MainActor.run {
-                    self.lastSavedAssetLocalIdentifier = savedIdentifier
+                    self.savePhase = .processing
+                }
+                let result = try await self.savePipeline.processAndSaveRecording(
+                    outputURL: outputFileURL,
+                    location: tagLocation,
+                    context: context
+                )
+                AppLog.save.info("save.success stamp_applied=\(result.processed.stampApplied, privacy: .public) fallback=\(result.processed.didFallback, privacy: .public)")
+                await MainActor.run {
+                    self.lastSavedAssetLocalIdentifier = result.identifier
+                    self.savePhase = .saved
                 }
             } catch AssetLibraryWriterError.permissionDenied {
                 AppLog.save.error("save.fail reason=permission_denied")
+                await MainActor.run {
+                    self.savePhase = .idle
+                }
                 self.showPermissionAlert(
                     title: "写真へのアクセスが必要です",
                     message: "動画を保存するには、設定アプリから写真へのアクセスを許可してください。"
                 )
             } catch {
                 AppLog.save.error("save.fail reason=\(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    self.savePhase = .idle
+                }
             }
             self.locationManager.stopUpdatingLocation()
         }
     }
+
+    func acknowledgeIndexedSave() {
+        DispatchQueue.main.async {
+            guard self.savePhase == .saved else { return }
+            self.savePhase = .indexed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                if self.savePhase == .indexed {
+                    self.savePhase = .idle
+                }
+            }
+        }
+    }
     func checkForPermissions() {
         locationManager.requestWhenInUseAuthorization()
-        checkPhotoLibraryPermission()
-        #if targetEnvironment(simulator)
-        updateCaptureReadiness(.warmingUp)
-        setupSession()
-        #else
-        let videoAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
-        let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-
-        if videoAuthStatus == .authorized && audioAuthStatus == .authorized {
-            updateCaptureReadiness(.warmingUp)
-            setupSession()
-        } else {
-            AVCaptureDevice.requestAccess(for: .video) { videoGranted in
-                AVCaptureDevice.requestAccess(for: .audio) { audioGranted in
-                    if videoGranted && audioGranted {
-                        self.updateCaptureReadiness(.warmingUp)
-                        DispatchQueue.main.async { self.setupSession() }
-                    } else {
-                        AppLog.permission.error("Camera or microphone access denied by user.")
-                        self.updateCaptureReadiness(.permissionsMissing)
-                        self.showPermissionAlert(
-                            title: "カメラへのアクセスが必要です",
-                            message: "このアプリの撮影機能を利用するには、設定アプリからカメラとマイクへのアクセスを許可してください。"
-                        )
-                    }
-                }
+        permissionService.preparePermissions(
+            onAuthorized: {
+                self.updateCaptureReadiness(.warmingUp)
+                DispatchQueue.main.async { self.setupSession() }
+            },
+            onDenied: { title, message in
+                AppLog.permission.error("permission.denied title=\(title, privacy: .public)")
+                self.updateCaptureReadiness(.permissionsMissing)
+                self.showPermissionAlert(title: title, message: message)
             }
-        }
-        #endif
-    }
-
-    private func checkPhotoLibraryPermission() {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        switch status {
-        case .authorized, .limited:
-            return
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                if newStatus != .authorized && newStatus != .limited {
-                    self.showPermissionAlert(
-                        title: "写真へのアクセスが必要です",
-                        message: "撮影動画の保存や一覧表示のため、設定アプリから写真へのアクセスを許可してください。"
-                    )
-                }
-            }
-        default:
-            updateCaptureReadiness(.permissionsMissing)
-            showPermissionAlert(
-                title: "写真へのアクセスが必要です",
-                message: "撮影動画の保存や一覧表示のため、設定アプリから写真へのアクセスを許可してください。"
-            )
-        }
+        )
     }
 
     private func showPermissionAlert(title: String, message: String) {
@@ -715,20 +739,6 @@ class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDel
                 self.startRecordingNow(duration: pending.duration, orientation: pending.orientation)
             }
         }
-    }
-}
-
-extension CameraService: CaptureCommand {
-    var captureStateSnapshot: CaptureStateSnapshot {
-        CaptureStateSnapshot(
-            isRecording: isRecording,
-            isSessionReady: isSessionReady,
-            isSessionInterrupted: isSessionInterrupted,
-            isReadyToRecord: isReadyToRecord,
-            isTorchAvailable: isTorchAvailable,
-            cameraPosition: cameraPosition,
-            readinessReason: captureReadinessReason
-        )
     }
 }
 
