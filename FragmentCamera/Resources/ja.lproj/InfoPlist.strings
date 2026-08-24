@@ -1,0 +1,6 @@
+"CFBundleDisplayName" = "My Day";
+"NSCameraUsageDescription" = "一日の短い瞬間を撮影するため、カメラを使用します。";
+"NSMicrophoneUsageDescription" = "動画にその場の音も残すため、マイクを使用します。";
+"NSPhotoLibraryAddUsageDescription" = "撮影した動画を写真ライブラリへ保存するために使用します。";
+"NSPhotoLibraryUsageDescription" = "過去の動画を一覧・再生・結合するため、写真ライブラリを使用します。";
+"NSLocationWhenInUseUsageDescription" = "位置情報の記録がオンの場合、動画に撮影場所と地名を記録するために使用します。";

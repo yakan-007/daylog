@@ -1,0 +1,6 @@
+"CFBundleDisplayName" = "My Day";
+"NSCameraUsageDescription" = "This Was My Day uses the camera to capture short moments from your day.";
+"NSMicrophoneUsageDescription" = "This Was My Day uses the microphone to keep the sound around each moment.";
+"NSPhotoLibraryAddUsageDescription" = "This Was My Day saves the videos you record to your photo library.";
+"NSPhotoLibraryUsageDescription" = "This Was My Day reads its album to show, play, and combine your past videos.";
+"NSLocationWhenInUseUsageDescription" = "When location recording is enabled, This Was My Day saves the location and place name with each video.";

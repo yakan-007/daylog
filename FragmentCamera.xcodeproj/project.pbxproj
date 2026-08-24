@@ -6,15 +6,34 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		D1000000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B36CA0B32E58AD6E007E39B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B36CA0BA2E58AD6E007E39B5;
+			remoteInfo = FragmentCamera;
+		};
+		E1000000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B36CA0B32E58AD6E007E39B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B36CA0BA2E58AD6E007E39B5;
+			remoteInfo = FragmentCamera;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		B36CA0BB2E58AD6E007E39B5 /* FragmentCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FragmentCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000001 /* FragmentCameraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FragmentCameraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E10000000000000000000001 /* FragmentCameraUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FragmentCameraUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		B36CA0D62E591A55007E39B5 /* Exceptions for "FragmentCamera" folder in "FragmentCamera" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
+				Resources/Info.plist,
 			);
 			target = B36CA0BA2E58AD6E007E39B5 /* FragmentCamera */;
 		};
@@ -29,10 +48,34 @@
 			path = FragmentCamera;
 			sourceTree = "<group>";
 		};
+		D10000000000000000000002 /* FragmentCameraTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FragmentCameraTests;
+			sourceTree = "<group>";
+		};
+		E10000000000000000000002 /* FragmentCameraUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FragmentCameraUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		B36CA0B82E58AD6E007E39B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +89,8 @@
 			isa = PBXGroup;
 			children = (
 				B36CA0BD2E58AD6E007E39B5 /* FragmentCamera */,
+				D10000000000000000000002 /* FragmentCameraTests */,
+				E10000000000000000000002 /* FragmentCameraUITests */,
 				B36CA0BC2E58AD6E007E39B5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +99,8 @@
 			isa = PBXGroup;
 			children = (
 				B36CA0BB2E58AD6E007E39B5 /* FragmentCamera.app */,
+				D10000000000000000000001 /* FragmentCameraTests.xctest */,
+				E10000000000000000000001 /* FragmentCameraUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +130,52 @@
 			productReference = B36CA0BB2E58AD6E007E39B5 /* FragmentCamera.app */;
 			productType = "com.apple.product-type.application";
 		};
+		D10000000000000000000006 /* FragmentCameraTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000009 /* Build configuration list for PBXNativeTarget "FragmentCameraTests" */;
+			buildPhases = (
+				D10000000000000000000004 /* Sources */,
+				D10000000000000000000003 /* Frameworks */,
+				D10000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D1000000000000000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				D10000000000000000000002 /* FragmentCameraTests */,
+			);
+			name = FragmentCameraTests;
+			packageProductDependencies = (
+			);
+			productName = FragmentCameraTests;
+			productReference = D10000000000000000000001 /* FragmentCameraTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E10000000000000000000006 /* FragmentCameraUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E10000000000000000000009 /* Build configuration list for PBXNativeTarget "FragmentCameraUITests" */;
+			buildPhases = (
+				E10000000000000000000004 /* Sources */,
+				E10000000000000000000003 /* Frameworks */,
+				E10000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E1000000000000000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E10000000000000000000002 /* FragmentCameraUITests */,
+			);
+			name = FragmentCameraUITests;
+			packageProductDependencies = (
+			);
+			productName = FragmentCameraUITests;
+			productReference = E10000000000000000000001 /* FragmentCameraUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -97,6 +190,14 @@
 						CreatedOnToolsVersion = 16.2;
 						LastSwiftMigration = 1620;
 					};
+					D10000000000000000000006 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = B36CA0BA2E58AD6E007E39B5;
+					};
+					E10000000000000000000006 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = B36CA0BA2E58AD6E007E39B5;
+					};
 				};
 			};
 			buildConfigurationList = B36CA0B62E58AD6E007E39B5 /* Build configuration list for PBXProject "FragmentCamera" */;
@@ -104,6 +205,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ja,
 				Base,
 			);
 			mainGroup = B36CA0B22E58AD6E007E39B5;
@@ -114,12 +216,28 @@
 			projectRoot = "";
 			targets = (
 				B36CA0BA2E58AD6E007E39B5 /* FragmentCamera */,
+				D10000000000000000000006 /* FragmentCameraTests */,
+				E10000000000000000000006 /* FragmentCameraUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B36CA0B92E58AD6E007E39B5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -136,7 +254,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D1000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B36CA0BA2E58AD6E007E39B5 /* FragmentCamera */;
+			targetProxy = D1000000000000000000000A /* PBXContainerItemProxy */;
+		};
+		E1000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B36CA0BA2E58AD6E007E39B5 /* FragmentCamera */;
+			targetProxy = E1000000000000000000000A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B36CA0C72E58AD71007E39B5 /* Debug */ = {
@@ -270,18 +415,15 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"FragmentCamera/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"FragmentCamera/Resources/Preview Content\"";
 				DEVELOPMENT_TEAM = 4PNC9S92T6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FragmentCamera/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_NSCameraUsageDescription = "ビデオの撮影を\n      行うためにカメラへのアクセスが必要です。";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "撮影したビデオをカメラロールに保存するために写真ライブラリへのアク\n      セスが必要です。";
+				INFOPLIST_FILE = FragmentCamera/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -293,7 +435,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -305,18 +447,15 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"FragmentCamera/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"FragmentCamera/Resources/Preview Content\"";
 				DEVELOPMENT_TEAM = 4PNC9S92T6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FragmentCamera/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_NSCameraUsageDescription = "ビデオの撮影を\n      行うためにカメラへのアクセスが必要です。";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "撮影したビデオをカメラロールに保存するために写真ライブラリへのアク\n      セスが必要です。";
+				INFOPLIST_FILE = FragmentCamera/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -327,7 +466,81 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D10000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4PNC9S92T6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leo.daylogTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FragmentCamera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FragmentCamera";
+			};
+			name = Debug;
+		};
+		D10000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4PNC9S92T6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leo.daylogTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FragmentCamera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FragmentCamera";
+			};
+			name = Release;
+		};
+		E10000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4PNC9S92T6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leo.daylogUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = FragmentCamera;
+			};
+			name = Debug;
+		};
+		E10000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4PNC9S92T6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leo.daylogUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = FragmentCamera;
 			};
 			name = Release;
 		};
@@ -348,6 +561,24 @@
 			buildConfigurations = (
 				B36CA0CA2E58AD71007E39B5 /* Debug */,
 				B36CA0CB2E58AD71007E39B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D10000000000000000000009 /* Build configuration list for PBXNativeTarget "FragmentCameraTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000007 /* Debug */,
+				D10000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E10000000000000000000009 /* Build configuration list for PBXNativeTarget "FragmentCameraUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10000000000000000000007 /* Debug */,
+				E10000000000000000000008 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

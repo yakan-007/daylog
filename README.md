@@ -1,18 +1,43 @@
-# daylog
+# This Was My Day
 
-## Open in Xcode
-- Project file: `/Users/leo/Developer/App/daylog/FragmentCamera.xcodeproj`
+一日の瞬間を1〜5秒ずつ撮影し、古い順に見返せるiOS動画日記です。日本語と英語に対応し、端末の言語設定へ自動で合わせます。
 
-## Directory structure
-- `FragmentCamera/`
-  - App source files (`ContentView.swift`, `CameraService.swift`, etc.)
-  - `Info.plist`
-  - Assets
-- `FragmentCamera.xcodeproj/`
-  - Xcode project
-- `task.md`
-  - Memo / task notes
+撮影方向は設定から縦／横を手動で切り替えられ、画面と保存動画へ同じ向きを適用します。
 
-## Notes
-- `FragmentCameraSource/` was removed because it was an unused duplicate.
-- Project hierarchy was flattened from `FragmentCamera/FragmentCamera/FragmentCamera/...` to `FragmentCamera/...`.
+スタンプは左上・右上・左下・右下・中央から位置を選び、日付・時刻・場所、12時間／24時間表記、フェードアウトを個別に設定できます。位置は文字の内容や時刻表記を変更せず、再生レイヤーと書き出しで同じ配置を使います。一日再生と結合書き出しは撮影時刻の古い順です。結合中は進捗率と処理工程を画面下へ表示し、80本以上では24本ずつの分割番号と最終結合を確認できます。
+
+既定では写真ライブラリにスタンプなし動画を保存し、アプリ内では現在設定のレイヤーとして表示します。一日動画などを書き出す時だけ同じ設定で焼き込みます。設定で「撮影時」を選べば、写真アプリでも見える形で最初から焼き込めます。一覧の鉛筆ボタンから後で変更でき、アセットは増えません。
+
+## Xcode
+
+`FragmentCamera.xcodeproj`を開いて、`FragmentCamera`スキームを実行します。
+
+## 構成
+
+```text
+FragmentCamera/
+├── App/                 # アプリ起動、ルート画面、依存関係の組み立て
+├── Features/
+│   ├── Capture/         # カメラ、録画、保存フロー
+│   ├── Library/         # 日別一覧、カレンダー、PhotoKit読込
+│   ├── Playback/        # 単体・日単位再生
+│   ├── Export/          # 単体・日単位の動画書き出しと共有
+│   └── Settings/        # 設定画面
+├── Core/
+│   ├── Domain/          # 共通モデル、表示形式、エラー
+│   ├── Media/           # 動画処理、音声セッション、書き出し
+│   ├── Persistence/     # メタデータ、一時ファイル
+│   ├── Settings/        # 設定値と永続化
+│   └── Support/         # 製品名、ローカライズ、ログ、システムUI連携
+├── DesignSystem/        # テーマと共通ビジュアル
+└── Resources/           # Info.plist、日英ローカライズ、Asset Catalog
+
+FragmentCameraTests/     # アプリと同じFeatures/Core分類の単体テスト
+```
+
+機能固有のコードは`Features`、複数機能から使う処理は`Core`、見た目だけを共有するものは`DesignSystem`へ置きます。
+
+## サポートとプライバシー
+
+- [プライバシーポリシー](PRIVACY.md)
+- [サポート・不具合報告](https://github.com/yakan-007/daylog/issues)
