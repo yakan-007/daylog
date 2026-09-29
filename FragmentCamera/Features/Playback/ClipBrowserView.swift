@@ -102,6 +102,15 @@ struct ClipBrowserView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
             }
+            if !state.textOverlays.isEmpty {
+                VlogTextOverlayCanvas(
+                    overlays: state.textOverlays,
+                    playbackTime: state.clipDuration * state.clipProgress,
+                    videoAspectRatio: state.videoAspectRatio
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
 
             if controlsVisible {
                 overlayContent
@@ -440,6 +449,8 @@ private struct ClipBrowserViewPreviews: PreviewProvider {
                 timeText: "18:42",
                 positionText: "2 / 5",
                 dayProgress: 0.32,
+                clipProgress: 0.32,
+                clipDuration: 3,
                 isPaused: false,
                 swipeHintText: "左右で同じ日の前後",
                 isLoading: false,
@@ -450,6 +461,7 @@ private struct ClipBrowserViewPreviews: PreviewProvider {
                 canRetreatDay: false,
                 canAdvanceDay: false,
                 stampContext: nil,
+                textOverlays: [],
                 videoAspectRatio: 9.0 / 16.0
             ),
             player: AVPlayer(),

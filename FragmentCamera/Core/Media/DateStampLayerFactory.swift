@@ -41,9 +41,11 @@ enum DateStampLayerFactory {
     static func installTimedStamps(
         on videoComposition: AVMutableVideoComposition,
         renderSize: CGSize,
-        stamps: [TimedVideoStamp]
+        stamps: [TimedVideoStamp],
+        vlogTextOverlays: [TimedVlogTextOverlay] = []
     ) {
         let textLayers = makeTimedTextLayers(stamps: stamps)
+            + VlogTextLayerFactory.makeTimedTextLayers(overlays: vlogTextOverlays)
         guard !textLayers.isEmpty else { return }
         installAnimationLayers(
             on: videoComposition,

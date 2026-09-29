@@ -18,6 +18,7 @@ final class DaylogContainer: ObservableObject {
     private let settingsStore: DaylogSettingsStore
     private let temporaryFileStore: TemporaryFileStore
     private let stampRecipeStore: VideoStampRecipeStore
+    private let clipEditStore: VlogClipEditStore
     private let placeNameResolver: PlaceNameResolver
     private let stampContextService: VideoStampContextService
     private var cancellables: Set<AnyCancellable> = []
@@ -26,6 +27,7 @@ final class DaylogContainer: ObservableObject {
         self.settingsStore = Self.makeSettingsStore()
         self.temporaryFileStore = TemporaryFileStore()
         self.stampRecipeStore = VideoStampRecipeStore()
+        self.clipEditStore = VlogClipEditStore()
         self.placeNameResolver = PlaceNameResolver()
         self.stampContextService = VideoStampContextService(
             recipeStore: stampRecipeStore,
@@ -43,6 +45,7 @@ final class DaylogContainer: ObservableObject {
         self.libraryVideoExportService = LibraryVideoExportService(
             exporter: dayVideoExporter,
             stampContextService: stampContextService,
+            clipEditStore: clipEditStore,
             settingsStore: settingsStore
         )
 
@@ -60,6 +63,7 @@ final class DaylogContainer: ObservableObject {
             postProcessPipeline: postProcessPipeline,
             temporaryFileStore: temporaryFileStore,
             stampRecipeStore: stampRecipeStore,
+            clipEditStore: clipEditStore,
             placeNameResolver: placeNameResolver,
             settingsStore: settingsStore
         )
@@ -117,6 +121,7 @@ final class DaylogContainer: ObservableObject {
             context: context,
             repository: repository,
             stampContextService: stampContextService,
+            clipEditStore: clipEditStore,
             settingsStore: settingsStore
         )
     }

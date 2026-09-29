@@ -1,3 +1,4 @@
+import Foundation
 import Photos
 
 /// A single export target prevents day and clip exports from becoming active at
@@ -57,15 +58,18 @@ enum LibraryExportProgressMapper {
 final class LibraryVideoExportService {
     private let exporter: DayVideoExporter
     private let stampContextService: VideoStampContextService
+    private let clipEditStore: VlogClipEditStore
     private let settingsStore: DaylogSettingsStore
 
     init(
         exporter: DayVideoExporter,
         stampContextService: VideoStampContextService,
+        clipEditStore: VlogClipEditStore,
         settingsStore: DaylogSettingsStore
     ) {
         self.exporter = exporter
         self.stampContextService = stampContextService
+        self.clipEditStore = clipEditStore
         self.settingsStore = settingsStore
     }
 
@@ -103,12 +107,30 @@ final class LibraryVideoExportService {
                 ))
             }
         )
+        let edits = try await clipEditStore.edits(
+            for: items.map { $0.asset.localIdentifier }
+        )
+        let textOverlaysByClip: [[VlogResolvedTextOverlay]] = items.enumerated().map { index, item in
+            guard let edit = edits[index] else { return [] }
+            let stampContext = stampContexts[index]
+            return VlogTextOverlayResolver.resolve(
+                edit: edit,
+                metadata: VlogClipSourceMetadata(
+                    capturedAt: item.capturedAt,
+                    capturedPlaceName: stampContext?.placeName,
+                    timeZoneIdentifier: stampContext?.timeZoneIdentifier
+                        ?? TimeZone.current.identifier
+                ),
+                clipDuration: item.asset.duration
+            )
+        }
 
         try Task.checkCancellation()
         return try await exporter.exportMergedVideo(
             for: items.map(\.asset),
             captureDates: items.map(\.capturedAt),
             stampContexts: stampContexts,
+            textOverlaysByClip: textOverlaysByClip,
             dayKey: outputKey,
             storageMode: storageMode,
             progress: {

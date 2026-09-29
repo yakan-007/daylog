@@ -128,6 +128,7 @@ final class DayVideoExporter {
         for assets: [PHAsset],
         captureDates: [Date]? = nil,
         stampContexts: [VideoPostProcessContext?] = [],
+        textOverlaysByClip: [[VlogResolvedTextOverlay]] = [],
         dayKey: String,
         storageMode: VideoStorageMode,
         progress: @escaping @Sendable (DayVideoExportProgress) -> Void = { _ in }
@@ -151,6 +152,10 @@ final class DayVideoExporter {
             ? stampContexts
             : Array(repeating: nil, count: assets.count)
         let sortedStampContexts = order.map { normalizedStampContexts[$0] }
+        let normalizedTextOverlays = textOverlaysByClip.count == assets.count
+            ? textOverlaysByClip
+            : Array(repeating: [], count: assets.count)
+        let sortedTextOverlays = order.map { normalizedTextOverlays[$0] }
         let progressReporter = DayVideoExportProgressReporter(callback: progress)
         progressReporter.report(0, phase: .preparing)
         AppLog.export.info("day_export.begin day=\(dayKey, privacy: .private) clips=\(sortedAssets.count, privacy: .public) compact=\(storageMode == .compact, privacy: .public)")
@@ -160,6 +165,7 @@ final class DayVideoExporter {
                 destinationURL = try await exportInChunks(
                     sortedAssets,
                     stampContexts: sortedStampContexts,
+                    textOverlaysByClip: sortedTextOverlays,
                     dayKey: dayKey,
                     storageMode: storageMode,
                     progress: { value, phase in
@@ -173,6 +179,7 @@ final class DayVideoExporter {
                 destinationURL = try await exportAssets(
                     sortedAssets,
                     stampContexts: sortedStampContexts,
+                    textOverlaysByClip: sortedTextOverlays,
                     outputPrefix: "export-\(dayKey)",
                     storageMode: storageMode,
                     progress: { progressReporter.report($0, phase: phase) }
@@ -196,6 +203,7 @@ final class DayVideoExporter {
     private func exportInChunks(
         _ assets: [PHAsset],
         stampContexts: [VideoPostProcessContext?],
+        textOverlaysByClip: [[VlogResolvedTextOverlay]],
         dayKey: String,
         storageMode: VideoStorageMode,
         progress: @escaping @Sendable (Double, DayVideoExportPhase) -> Void
@@ -214,6 +222,7 @@ final class DayVideoExporter {
             let url = try await exportAssets(
                 Array(assets[range]),
                 stampContexts: Array(stampContexts[range]),
+                textOverlaysByClip: Array(textOverlaysByClip[range]),
                 outputPrefix: "export-\(dayKey)-part-\(index + 1)",
                 storageMode: storageMode,
                 progress: { chunkProgress in
@@ -249,6 +258,7 @@ final class DayVideoExporter {
     private func exportAssets(
         _ assets: [PHAsset],
         stampContexts: [VideoPostProcessContext?],
+        textOverlaysByClip: [[VlogResolvedTextOverlay]],
         outputPrefix: String,
         storageMode: VideoStorageMode,
         progress: @escaping @Sendable (Double) -> Void
@@ -257,6 +267,7 @@ final class DayVideoExporter {
             sourceCount: assets.count,
             storageMode: storageMode,
             stampContexts: stampContexts,
+            textOverlaysByClip: textOverlaysByClip,
             progress: { progress($0 * 0.35) }
         ) { [self] index in
             try await requestAVAsset(

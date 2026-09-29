@@ -4,6 +4,10 @@ import Photos
 
 struct EditableVideoStamp: Sendable {
     let context: VideoPostProcessContext
+    let clipDuration: TimeInterval
+    let videoAspectRatio: Double
+    let clipEdit: VlogClipEdit
+    let sourceMetadata: VlogClipSourceMetadata
     let commonStampEnabled: Bool
     let commonElements: Set<DateStampElement>
     let visibilityOverride: VideoStampVisibilityOverride
@@ -15,6 +19,7 @@ final class VideoStampEditingService {
     private let postProcessPipeline: VideoPostProcessPipeline
     private let temporaryFileStore: TemporaryFileStore
     private let stampRecipeStore: VideoStampRecipeStore
+    private let clipEditStore: VlogClipEditStore
     private let placeNameResolver: any PlaceNameResolving
     private let settingsStore: DaylogSettingsStore
 
@@ -22,12 +27,14 @@ final class VideoStampEditingService {
         postProcessPipeline: VideoPostProcessPipeline,
         temporaryFileStore: TemporaryFileStore,
         stampRecipeStore: VideoStampRecipeStore,
+        clipEditStore: VlogClipEditStore,
         placeNameResolver: any PlaceNameResolving = PlaceNameResolver(),
         settingsStore: DaylogSettingsStore = DaylogSettingsStore()
     ) {
         self.postProcessPipeline = postProcessPipeline
         self.temporaryFileStore = temporaryFileStore
         self.stampRecipeStore = stampRecipeStore
+        self.clipEditStore = clipEditStore
         self.placeNameResolver = placeNameResolver
         self.settingsStore = settingsStore
     }
@@ -62,14 +69,30 @@ final class VideoStampEditingService {
             timeZoneIdentifier: recipe.context.timeZoneIdentifier,
             storageMode: recipe.context.storageMode
         )
+        let clipEdit = try await clipEditStore.edit(for: assetLocalIdentifier)
+            ?? VlogClipEdit(assetLocalIdentifier: assetLocalIdentifier)
         return EditableVideoStamp(
             context: context,
+            clipDuration: asset.duration,
+            videoAspectRatio: asset.pixelHeight > 0
+                ? Double(asset.pixelWidth) / Double(asset.pixelHeight)
+                : 9.0 / 16.0,
+            clipEdit: clipEdit,
+            sourceMetadata: VlogClipSourceMetadata(
+                capturedAt: context.stampDate,
+                capturedPlaceName: context.placeName,
+                timeZoneIdentifier: context.timeZoneIdentifier
+            ),
             commonStampEnabled: commonSettings.isEnabled,
             commonElements: commonSettings.elements,
             visibilityOverride: recipe.visibilityOverride ?? .none,
             canUsePlace: asset.location != nil || context.placeName != nil,
             requiresVideoRegeneration: recipe.renderingMode == .burnOnCapture
         )
+    }
+
+    func saveClipEdit(_ edit: VlogClipEdit, clipDuration: TimeInterval) async throws {
+        try await clipEditStore.save(edit, clipDuration: clipDuration)
     }
 
     func apply(

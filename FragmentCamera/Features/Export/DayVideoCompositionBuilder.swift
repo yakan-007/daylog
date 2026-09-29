@@ -22,6 +22,7 @@ final class DayVideoCompositionBuilder {
         sourceCount: Int,
         storageMode: VideoStorageMode,
         stampContexts: [VideoPostProcessContext?] = [],
+        textOverlaysByClip: [[VlogResolvedTextOverlay]] = [],
         progress: @Sendable (Double) -> Void = { _ in },
         assetAt: (Int) async throws -> AVAsset
     ) async throws -> BuiltDayVideoComposition {
@@ -126,9 +127,10 @@ final class DayVideoCompositionBuilder {
         videoComposition.instructions = instructions
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = encodingPolicy.frameDuration
-        if stampContexts.count == layouts.count {
-            let timedStamps = layouts.enumerated().compactMap { index, layout in
-                stampContexts[index].map {
+        if stampContexts.count == layouts.count || textOverlaysByClip.count == layouts.count {
+            let timedStamps: [TimedVideoStamp] = layouts.enumerated().compactMap { index, layout in
+                guard stampContexts.count == layouts.count else { return nil }
+                return stampContexts[index].map {
                     TimedVideoStamp(
                         context: $0,
                         start: layout.start,
@@ -140,10 +142,29 @@ final class DayVideoCompositionBuilder {
                     )
                 }
             }
+            let timedTextOverlays: [TimedVlogTextOverlay] = layouts.enumerated().flatMap { index, layout -> [TimedVlogTextOverlay] in
+                guard textOverlaysByClip.count == layouts.count else { return [] }
+                let clipDuration = max(layout.duration.seconds, 0)
+                return textOverlaysByClip[index].compactMap { overlay -> TimedVlogTextOverlay? in
+                    let start = min(max(overlay.timeRange.start, 0), clipDuration)
+                    let end = min(max(overlay.timeRange.end ?? clipDuration, 0), clipDuration)
+                    guard end > start else { return nil }
+                    return TimedVlogTextOverlay(
+                        overlay: overlay,
+                        start: CMTimeAdd(
+                            layout.start,
+                            CMTime(seconds: start, preferredTimescale: 600)
+                        ),
+                        duration: CMTime(seconds: end - start, preferredTimescale: 600),
+                        contentFrame: contentFrame(for: layout, renderSize: renderSize)
+                    )
+                }
+            }
             DateStampLayerFactory.installTimedStamps(
                 on: videoComposition,
                 renderSize: renderSize,
-                stamps: timedStamps
+                stamps: timedStamps,
+                vlogTextOverlays: timedTextOverlays
             )
         }
         return BuiltDayVideoComposition(

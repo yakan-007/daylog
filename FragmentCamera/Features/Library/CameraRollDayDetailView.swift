@@ -141,7 +141,7 @@ private struct CameraRollGridClipTile: View {
     private var clipMenu: some View {
         Menu {
             Button(action: onEditStamp) {
-                Label("スタンプを編集", systemImage: "pencil")
+                Label("動画を編集", systemImage: "pencil")
             }
             .accessibilityIdentifier("library.clip.stamp")
 

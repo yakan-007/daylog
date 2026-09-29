@@ -17,6 +17,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
     @Published private(set) var currentClipProgress: Double = 0
     @Published private(set) var isPaused = false
     @Published private(set) var currentStampContext: VideoPostProcessContext?
+    @Published private(set) var currentTextOverlays: [VlogResolvedTextOverlay] = []
     @Published private(set) var currentVideoAspectRatio: CGFloat = 9.0 / 16.0
 
     let days: [LibraryClipPlaybackDay]
@@ -25,6 +26,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
     private let repository: PlaybackAssetRepository
     private let mode: ClipPlaybackMode
     private let stampContextService: VideoStampContextService
+    private let clipEditStore: VlogClipEditStore
     private let settingsStore: DaylogSettingsStore
     private var currentRequestID: PHImageRequestID?
     private var loadingAssetIdentifier: String?
@@ -34,6 +36,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
     private var loadGeneration = 0
     private var isPlaybackActive = false
     private var pendingStampContext: VideoPostProcessContext?
+    private var pendingTextOverlays: [VlogResolvedTextOverlay] = []
     private var isPlayerReadyForCurrentAsset = false
     private var navigationTask: Task<Void, Never>?
     private var volumeFadeTask: Task<Void, Never>?
@@ -42,6 +45,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
     private var queuedNextAssetIdentifier: String?
     private var queuedNextPlayerItem: AVPlayerItem?
     private var queuedNextStampContext: VideoPostProcessContext?
+    private var queuedNextTextOverlays: [VlogResolvedTextOverlay] = []
     private var queuedNextAspectRatio: CGFloat?
 
     private static let transitionFadeOutDuration: TimeInterval = 0.12
@@ -70,6 +74,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         context: LibraryClipPlaybackContext,
         repository: PlaybackAssetRepository,
         stampContextService: VideoStampContextService = VideoStampContextService(),
+        clipEditStore: VlogClipEditStore = VlogClipEditStore(),
         settingsStore: DaylogSettingsStore = DaylogSettingsStore()
     ) {
         precondition(
@@ -80,6 +85,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         self.repository = repository
         self.mode = context.mode
         self.stampContextService = stampContextService
+        self.clipEditStore = clipEditStore
         self.settingsStore = settingsStore
         self.player.actionAtItemEnd = context.mode == .continuousDay ? .advance : .pause
         self.player.automaticallyWaitsToMinimizeStalling = true
@@ -123,7 +129,9 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         isLoading = false
         didFailToLoad = false
         currentStampContext = nil
+        currentTextOverlays = []
         pendingStampContext = nil
+        pendingTextOverlays = []
         isPlayerReadyForCurrentAsset = false
         isTransitioning = false
         currentClipProgress = 0
@@ -157,6 +165,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
             currentClipProgress: currentClipProgress,
             isPaused: isPaused,
             stampContext: currentStampContext,
+            textOverlays: currentTextOverlays,
             videoAspectRatio: currentVideoAspectRatio
         )
     }
@@ -309,6 +318,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         player.insert(playerItem, after: nil)
         isPlayerReadyForCurrentAsset = true
         currentStampContext = pendingStampContext
+        currentTextOverlays = pendingTextOverlays
         observePlaybackEnd(for: playerItem)
 
         playerPreparationTask?.cancel()
@@ -519,6 +529,8 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         )
         currentStampContext = queuedNextStampContext
         pendingStampContext = queuedNextStampContext
+        currentTextOverlays = queuedNextTextOverlays
+        pendingTextOverlays = queuedNextTextOverlays
         currentVideoAspectRatio = queuedNextAspectRatio ?? currentVideoAspectRatio
         isPlayerReadyForCurrentAsset = true
         isLoading = false
@@ -533,6 +545,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         queuedNextAssetIdentifier = nil
         queuedNextPlayerItem = nil
         queuedNextStampContext = nil
+        queuedNextTextOverlays = []
         queuedNextAspectRatio = nil
 
         observePlaybackEnd(for: queuedItem)
@@ -565,6 +578,13 @@ final class LibraryClipBrowserViewModel: ObservableObject {
                 storageMode: storageMode
             )
             applyPreparedStampContext(initialContext, assetIdentifier: assetIdentifier)
+            let initialTextOverlays = await resolvedTextOverlays(
+                assetIdentifier: assetIdentifier,
+                clip: clip,
+                stampContext: initialContext
+            )
+            guard isPlaybackActive else { return }
+            applyPreparedTextOverlays(initialTextOverlays, assetIdentifier: assetIdentifier)
 
             let resolvedContext = await stampContextService.resolvedDisplayContext(
                 source: source,
@@ -574,6 +594,15 @@ final class LibraryClipBrowserViewModel: ObservableObject {
             )
             guard isPlaybackActive else { return }
             applyPreparedStampContext(resolvedContext, assetIdentifier: assetIdentifier)
+            if resolvedContext != initialContext {
+                let resolvedOverlays = await resolvedTextOverlays(
+                    assetIdentifier: assetIdentifier,
+                    clip: clip,
+                    stampContext: resolvedContext
+                )
+                guard isPlaybackActive else { return }
+                applyPreparedTextOverlays(resolvedOverlays, assetIdentifier: assetIdentifier)
+            }
         }
     }
 
@@ -586,6 +615,46 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         } else if currentItem.assetLocalIdentifier == assetIdentifier {
             currentStampContext = context
             pendingStampContext = context
+        }
+    }
+
+    private func applyPreparedTextOverlays(
+        _ overlays: [VlogResolvedTextOverlay],
+        assetIdentifier: String
+    ) {
+        if queuedNextAssetIdentifier == assetIdentifier {
+            queuedNextTextOverlays = overlays
+        } else if currentItem.assetLocalIdentifier == assetIdentifier {
+            currentTextOverlays = overlays
+            pendingTextOverlays = overlays
+        }
+    }
+
+    private func resolvedTextOverlays(
+        assetIdentifier: String,
+        clip: PlaybackClipItem,
+        stampContext: VideoPostProcessContext?
+    ) async -> [VlogResolvedTextOverlay] {
+        do {
+            guard let edit = try await clipEditStore.edit(for: assetIdentifier) else {
+                return []
+            }
+            let metadata = VlogClipSourceMetadata(
+                capturedAt: clip.capturedAt,
+                capturedPlaceName: stampContext?.placeName,
+                timeZoneIdentifier: stampContext?.timeZoneIdentifier
+                    ?? TimeZone.current.identifier
+            )
+            return VlogTextOverlayResolver.resolve(
+                edit: edit,
+                metadata: metadata,
+                clipDuration: clip.duration
+            )
+        } catch {
+            AppLog.player.error(
+                "vlog_edit.playback.load.fail asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)"
+            )
+            return []
         }
     }
 
@@ -602,6 +671,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         queuedNextAssetIdentifier = nil
         queuedNextPlayerItem = nil
         queuedNextStampContext = nil
+        queuedNextTextOverlays = []
         queuedNextAspectRatio = nil
     }
 
@@ -670,7 +740,9 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         cancelQueuedNext(removeFromPlayer: true)
         cancelPrefetchRequests()
         currentStampContext = nil
+        currentTextOverlays = []
         pendingStampContext = nil
+        pendingTextOverlays = []
         isPlayerReadyForCurrentAsset = false
 
         guard let asset = repository.asset(
@@ -788,8 +860,17 @@ final class LibraryClipBrowserViewModel: ObservableObject {
                 storageMode: storageMode
             )
             pendingStampContext = initialContext
+            pendingTextOverlays = await resolvedTextOverlays(
+                assetIdentifier: assetIdentifier,
+                clip: currentItem,
+                stampContext: initialContext
+            )
+            guard isPlaybackActive,
+                  loadGeneration == generation,
+                  currentItem.assetLocalIdentifier == assetIdentifier else { return }
             if isPlayerReadyForCurrentAsset {
                 currentStampContext = pendingStampContext
+                currentTextOverlays = pendingTextOverlays
             }
 
             let resolvedContext = await stampContextService.resolvedDisplayContext(
@@ -803,8 +884,17 @@ final class LibraryClipBrowserViewModel: ObservableObject {
                currentItem.assetLocalIdentifier == assetIdentifier else { return }
             guard resolvedContext != initialContext else { return }
             pendingStampContext = resolvedContext
+            pendingTextOverlays = await resolvedTextOverlays(
+                assetIdentifier: assetIdentifier,
+                clip: currentItem,
+                stampContext: resolvedContext
+            )
+            guard isPlaybackActive,
+                  loadGeneration == generation,
+                  currentItem.assetLocalIdentifier == assetIdentifier else { return }
             if isPlayerReadyForCurrentAsset {
                 currentStampContext = pendingStampContext
+                currentTextOverlays = pendingTextOverlays
             }
         }
     }

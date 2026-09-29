@@ -7,6 +7,8 @@ struct ClipBrowserScreenState: Equatable {
     let timeText: String
     let positionText: String
     let dayProgress: Double
+    let clipProgress: Double
+    let clipDuration: TimeInterval
     let isPaused: Bool
     let swipeHintText: String
     let isLoading: Bool
@@ -17,6 +19,7 @@ struct ClipBrowserScreenState: Equatable {
     let canRetreatDay: Bool
     let canAdvanceDay: Bool
     let stampContext: VideoPostProcessContext?
+    let textOverlays: [VlogResolvedTextOverlay]
     let videoAspectRatio: CGFloat
 }
 
@@ -98,6 +101,7 @@ enum ClipBrowserPresenter {
         currentClipProgress: Double = 0,
         isPaused: Bool = false,
         stampContext: VideoPostProcessContext? = nil,
+        textOverlays: [VlogResolvedTextOverlay] = [],
         videoAspectRatio: CGFloat = 9.0 / 16.0
     ) -> ClipBrowserScreenState {
         let elapsedBeforeCurrentClip = day.items
@@ -120,6 +124,8 @@ enum ClipBrowserPresenter {
             timeText: item.displayTimeText,
             positionText: "\(clipIndex + 1) / \(day.clipCount)",
             dayProgress: dayProgress,
+            clipProgress: boundedClipProgress,
+            clipDuration: max(item.duration, 0),
             isPaused: isPaused,
             swipeHintText: canRetreatClip || canAdvanceClip
                 ? L10n.text("左右で同じ日の前後")
@@ -132,6 +138,7 @@ enum ClipBrowserPresenter {
             canRetreatDay: canRetreatDay,
             canAdvanceDay: canAdvanceDay,
             stampContext: stampContext,
+            textOverlays: textOverlays,
             videoAspectRatio: videoAspectRatio
         )
     }
