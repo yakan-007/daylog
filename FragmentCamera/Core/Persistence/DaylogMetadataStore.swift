@@ -4,10 +4,10 @@ actor ClipMetadataStore {
     private let fileURL: URL
     private var clipsByID: [String: ClipSummary] = [:]
 
-    init(filename: String = "daylog-clip-metadata.json") {
+    init(filename: String = "vlogish-clip-metadata.json") {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let directoryURL = baseURL.appendingPathComponent("daylog", isDirectory: true)
+        let directoryURL = baseURL.appendingPathComponent("vlogish", isDirectory: true)
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         self.fileURL = directoryURL.appendingPathComponent(filename)
         self.clipsByID = Self.load(from: fileURL)

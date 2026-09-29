@@ -94,7 +94,7 @@ final class DaylogContainer: ObservableObject {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-testing") {
-            let suiteName = "com.leo.daylog.ui-testing"
+            let suiteName = "com.leo.vlogish.ui-testing"
             guard let defaults = UserDefaults(suiteName: suiteName) else {
                 preconditionFailure("UIテスト用UserDefaultsを作成できませんでした。")
             }

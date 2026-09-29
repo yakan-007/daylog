@@ -1,4 +1,4 @@
-"CFBundleDisplayName" = "My Day";
+"CFBundleDisplayName" = "Vlogish";
 "NSCameraUsageDescription" = "一日の短い瞬間を撮影するため、カメラを使用します。";
 "NSMicrophoneUsageDescription" = "動画にその場の音も残すため、マイクを使用します。";
 "NSPhotoLibraryAddUsageDescription" = "撮影した動画を写真ライブラリへ保存するために使用します。";

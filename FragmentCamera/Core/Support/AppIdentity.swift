@@ -3,9 +3,9 @@ import Foundation
 /// Public-facing product identity. Keeping these values in one place prevents
 /// the App Store name, Photos album, and in-app copy from drifting apart.
 enum AppIdentity {
-    static let brandName = "This Was My Day"
-    static let homeScreenName = "My Day"
-    static let photoAlbumName = "This Was My Day"
+    static let brandName = "Vlogish"
+    static let homeScreenName = "Vlogish"
+    static let photoAlbumName = "Vlogish"
 }
 
 enum L10n {

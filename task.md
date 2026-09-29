@@ -1,5 +1,7 @@
 # Fragment Camera 新機能タスクリスト
 
+> 2026-09-22: 以下は過去のアイデア一覧。現在の作業順序は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)、製品上の決定事項は [PRODUCT_SPEC.md](PRODUCT_SPEC.md) を参照する。以下の未チェック項目を、そのまま新規の実装指示として扱わない。
+
 ## 確定済みの新機能
 
 - [ ] **撮影時間の変更**

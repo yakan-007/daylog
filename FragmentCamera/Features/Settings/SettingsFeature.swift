@@ -315,7 +315,7 @@ struct SettingsFeatureView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {
-                    Text("This Was My Day について")
+                    Text("Vlogishについて")
                 }
             }
             .font(.system(size: 15))

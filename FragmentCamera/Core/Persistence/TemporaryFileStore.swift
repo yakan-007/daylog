@@ -25,7 +25,7 @@ final class TemporaryFileStore {
     ) {
         self.fileManager = fileManager
         self.rootURL = rootURL
-            ?? fileManager.temporaryDirectory.appendingPathComponent("daylog", isDirectory: true)
+            ?? fileManager.temporaryDirectory.appendingPathComponent("vlogish", isDirectory: true)
         self.now = now
 
         try? prepareDirectory()

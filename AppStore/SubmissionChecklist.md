@@ -1,8 +1,8 @@
 # App Store Submission Checklist
 
 ## Product Identity
-- App Store Name: `This Was My Day`
-- Home Screen Name: `My Day`
+- App Store Name: `Vlogish`
+- Home Screen Name: `Vlogish`
 - Core promise: multiple 1–5 second moments become one chronological day
 
 ## Metadata (English)
@@ -18,7 +18,7 @@
   - `No account required; videos stay in your photo library`
 
 ## Metadata (Japanese)
-- App Name: `This Was My Day`
+- App Name: `Vlogish`
 - Subtitle: `数秒ずつ、一日の流れを残す`
 - Promotional Text:
   - `1〜5秒ずつ残した瞬間を、古い順に一日の流れとして再生。日付・時刻・場所は後から表示を変えられます。`
@@ -42,7 +42,7 @@
 - [ ] `Share the whole day.` / `一日を一本にして共有。`
 
 ## Before Paying / Enrolling
-- [ ] Confirm `This Was My Day` in App Store Connect and perform a basic trademark check
+- [ ] Confirm `Vlogish` in App Store Connect and perform a trademark check
 - [ ] Decide whether to enroll as an individual (legal name is public) or an organization
 - [ ] Complete all no-membership real-device checks below
 

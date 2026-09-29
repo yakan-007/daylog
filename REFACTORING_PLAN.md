@@ -1,8 +1,10 @@
-# This Was My Day アーキテクチャ基準
+# Vlogish アーキテクチャ基準
+
+> 2026-09-22: 今後の実装は [PRODUCT_SPEC.md](PRODUCT_SPEC.md) と [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) に従う。本書は過去の構造整理の記録。旧UIの再導入、再生基盤の一括変更、保存済みデータの破棄を指示するものではない。
 
 - 文書版: 2.4
 - 更新日: 2026-08-14
-- 対象: `This Was My Day` iOSアプリ（内部ターゲット名: `FragmentCamera`）
+- 対象: `Vlogish` iOSアプリ（内部ターゲット名: `FragmentCamera`）
 - 前提: App Store公開前。旧実装・開発中データとの互換レイヤーは持たない
 
 ## 結論
@@ -158,7 +160,7 @@ FragmentCamera
 - 1〜5秒撮影、早期停止、残り時間表示
 - 前後カメラ、ライト、グリッド、フォーカス、ズーム
 - 日付スタンプ、標準／節約、音声、任意の位置情報
-- 写真ライブラリ内 `This Was My Day` アルバムを正本とする
+- 写真ライブラリ内 `Vlogish` アルバムを正本とする
 - 日別一覧、個別再生、日次連続再生、結合共有
 - 保存失敗を無言で終えず、次の行動を表示する
 - iPhone・設定による縦／横の手動切替

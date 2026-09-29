@@ -43,7 +43,7 @@ final class CaptureRecoveryStore {
                 in: .userDomainMask
             ).first ?? fileManager.temporaryDirectory
             self.rootURL = applicationSupport
-                .appendingPathComponent("daylog", isDirectory: true)
+                .appendingPathComponent("vlogish", isDirectory: true)
                 .appendingPathComponent("CaptureRecovery", isDirectory: true)
         }
         try? prepareDirectory()

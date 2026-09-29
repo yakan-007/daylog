@@ -2,7 +2,7 @@ import Foundation
 import Photos
 
 enum DaylogStampAdjustment {
-    static let formatIdentifier = "com.leo.daylog.stamp"
+    static let formatIdentifier = "com.leo.vlogish.stamp"
     static let formatVersion = "2.0"
 
     static func makePhotoAdjustment(

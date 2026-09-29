@@ -140,7 +140,7 @@ struct CameraRollView: View {
 
     private var feedHeader: some View {
         surfaceHeader(
-            title: "Daylog",
+            title: AppIdentity.brandName,
             leadingSystemName: "xmark",
             leadingLabel: "閉じる",
             leadingIdentifier: "library.close",

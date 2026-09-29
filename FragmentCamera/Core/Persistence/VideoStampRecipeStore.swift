@@ -108,7 +108,7 @@ actor VideoStampRecipeStore {
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
         return baseURL
-            .appendingPathComponent("daylog", isDirectory: true)
+            .appendingPathComponent("vlogish", isDirectory: true)
             .appendingPathComponent("video-stamp-recipes.json")
     }
 }

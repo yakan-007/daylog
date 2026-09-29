@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>My Day</string>
+	<string>Vlogish</string>
 	<key>NSCameraUsageDescription</key>
 	<string>日々の短い動画を素早く撮影するため、カメラを使用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
