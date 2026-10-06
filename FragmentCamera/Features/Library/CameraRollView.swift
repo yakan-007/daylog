@@ -20,8 +20,8 @@ struct CameraRollView: View {
     /// 完成カードの「共有・保存」と「閉じる」。
     var onShareExport: () -> Void = {}
     var onDismissExport: () -> Void = {}
-    /// 動画を削除する（1日の詳細のメニューから）。
-    var onDeleteClip: (String) -> Void = { _ in }
+    /// 動画を外す・削除する（1日の詳細のメニューから）。
+    var onRemoveClip: (String, ClipRemoval) -> Void = { _, _ in }
 
     @State private var surface: Surface = .feed
     /// カレンダーから開いたが読み込めなかった日。スピナーのまま止まらないよう、失敗を表示して再試行できるようにする。
@@ -304,7 +304,7 @@ struct CameraRollView: View {
                     onEditStamp: onEditStamp,
                     onExportClip: onExportClip,
                     onCancelExport: onCancelExport,
-                    onDeleteClip: onDeleteClip
+                    onRemoveClip: onRemoveClip
                 )
             }
             .background(RollTheme.ground)

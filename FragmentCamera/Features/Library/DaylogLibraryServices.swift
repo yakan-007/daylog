@@ -73,6 +73,24 @@ final class VlogishPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserve
 
     /// 写真ライブラリから動画を削除する。iOS が確認を出し、消した動画は「最近削除した項目」に30日残る。
     /// 利用者が確認でキャンセルした時は `PHPhotosError.userCancelled` が返る。
+    /// 「Vlogish」アルバムから外す。動画は写真に残る（写真アプリでアルバムに戻せば Vlogish にも戻る）。
+    func removeFromAlbum(localIdentifier: String) async throws {
+        let found = fetchAlbumCollections()
+        let albumIdentifiers = (0..<found.count).map { found.object(at: $0).localIdentifier }
+        guard !albumIdentifiers.isEmpty else { return }
+        let identifiers = [localIdentifier]
+        try await PHPhotoLibrary.shared().performChanges {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
+            let albums = PHAssetCollection.fetchAssetCollections(
+                withLocalIdentifiers: albumIdentifiers,
+                options: nil
+            )
+            albums.enumerateObjects { album, _, _ in
+                PHAssetCollectionChangeRequest(for: album)?.removeAssets(assets)
+            }
+        }
+    }
+
     func deleteAsset(localIdentifier: String) async throws {
         let identifiers = [localIdentifier]
         try await PHPhotoLibrary.shared().performChanges {

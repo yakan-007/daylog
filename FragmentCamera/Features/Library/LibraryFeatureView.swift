@@ -100,15 +100,16 @@ struct VlogishLibrarySheetView: View {
             Text("iOSで選択した写真だけを表示しています。アプリの動画が見つからない場合は、表示する写真を追加してください。")
         }
         .alert(
-            L10n.text("動画を削除できませんでした"),
+            viewModel.clipRemovalFailure?.title ?? "",
             isPresented: Binding(
-                get: { viewModel.deleteFailureMessage != nil },
-                set: { if !$0 { viewModel.deleteFailureMessage = nil } }
-            )
-        ) {
+                get: { viewModel.clipRemovalFailure != nil },
+                set: { if !$0 { viewModel.clipRemovalFailure = nil } }
+            ),
+            presenting: viewModel.clipRemovalFailure
+        ) { _ in
             Button(L10n.text("閉じる"), role: .cancel) {}
-        } message: {
-            Text(viewModel.deleteFailureMessage ?? "")
+        } message: { failure in
+            Text(failure.message)
         }
         .interactiveDismissDisabled(viewModel.hasActiveExport)
         .onChange(of: scenePhase) { _, phase in
@@ -135,7 +136,7 @@ struct VlogishLibrarySheetView: View {
             onExpand: onExpand,
             onShareExport: viewModel.shareCompletedExport,
             onDismissExport: viewModel.dismissCompletedExport,
-            onDeleteClip: viewModel.deleteClip
+            onRemoveClip: viewModel.removeClip
         )
     }
 

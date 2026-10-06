@@ -426,3 +426,7 @@
 "編集データを読み込めませんでした。" = "Couldn't read the edit data.";
 "削除" = "Delete";
 "動画を削除できませんでした" = "Couldn't Delete the Video";
+"Vlogishから外す" = "Remove from Vlogish";
+"写真からも削除" = "Delete from Photos";
+"Vlogishから外しても、動画は写真に残ります。" = "Removing it from Vlogish keeps the video in Photos.";
+"Vlogishから外せませんでした" = "Couldn't Remove from Vlogish";

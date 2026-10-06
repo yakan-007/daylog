@@ -381,3 +381,11 @@ enum CameraRollTimelinePresenter {
         String(format: "%02d", min(max(hour, 0), 24))
     }
 }
+
+/// 1日の詳細で「削除」を選んだ時の2択（iPhone の写真アプリのアルバムと同じ形）。
+enum ClipRemoval: Equatable, Sendable {
+    /// 「Vlogish」アルバムから外すだけ。動画は写真に残る。
+    case removeFromVlogish
+    /// 写真ライブラリから削除する。iOS が確認を出し、「最近削除した項目」に30日残る。
+    case deleteFromPhotos
+}

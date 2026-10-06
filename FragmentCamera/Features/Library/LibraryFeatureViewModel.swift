@@ -22,8 +22,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     @Published var libraryFailure: VlogishFailure?
     @Published var isLimitedLibraryNoticePresented = false
     @Published var stampEditorRoute: VideoStampEditorRoute?
-    /// 動画を削除できなかった時の説明（アラートに出す）。
-    @Published var deleteFailureMessage: String?
+    /// 動画を外す・削除するのに失敗した時のアラート。
+    @Published var clipRemovalFailure: ClipRemovalFailure?
 
     private let useCase: VlogishLibraryUseCase
     private let repository: VlogishPhotoLibraryRepository
@@ -216,21 +216,32 @@ final class LibraryFeatureViewModel: ObservableObject {
         playbackRoute = PlaybackRoute(context: context)
     }
 
-    /// 動画を削除する。写真ライブラリからも消える（iOS の確認が出て、「最近削除した項目」に30日残る）。
-    func deleteClip(id: String) {
+    /// 動画を Vlogish から外す、または写真からも削除する。
+    /// どちらも編集内容とスタンプ設定は片付ける（写真アプリでアルバムに戻した時は、編集なしで戻る）。
+    func removeClip(id: String, _ removal: ClipRemoval) {
         guard !hasActiveExport else { return }
         Task { @MainActor in
             do {
-                try await repository.deleteAsset(localIdentifier: id)
+                switch removal {
+                case .removeFromVlogish:
+                    try await repository.removeFromAlbum(localIdentifier: id)
+                case .deleteFromPhotos:
+                    try await repository.deleteAsset(localIdentifier: id)
+                }
                 await stampEditingService.forgetClip(assetLocalIdentifier: id)
                 await refreshLibrary(requestAuthorizationIfNeeded: false, reportsFailure: false)
             } catch let error as PHPhotosError where error.code == .userCancelled {
                 // iOS の確認でキャンセルした。何もしない。
             } catch {
                 AppLog.storage.error(
-                    "clip.delete.fail reason=\(error.localizedDescription, privacy: .private)"
+                    "clip.remove.fail removal=\(String(describing: removal), privacy: .public) reason=\(error.localizedDescription, privacy: .private)"
                 )
-                deleteFailureMessage = error.localizedDescription
+                clipRemovalFailure = ClipRemovalFailure(
+                    title: removal == .removeFromVlogish
+                        ? L10n.text("Vlogishから外せませんでした")
+                        : L10n.text("動画を削除できませんでした"),
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -755,4 +766,9 @@ final class LibraryFeatureViewModel: ObservableObject {
         }
         return root
     }
+}
+
+struct ClipRemovalFailure: Equatable {
+    let title: String
+    let message: String
 }

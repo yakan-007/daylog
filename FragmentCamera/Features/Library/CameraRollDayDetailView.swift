@@ -9,7 +9,7 @@ struct CameraRollDayDetailView: View {
     let onEditStamp: (String) -> Void
     let onExportClip: (String) -> Void
     let onCancelExport: () -> Void
-    var onDeleteClip: (String) -> Void = { _ in }
+    var onRemoveClip: (String, ClipRemoval) -> Void = { _, _ in }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -85,7 +85,7 @@ struct CameraRollDayDetailView: View {
                 onEditStamp: { onEditStamp(clip.id) },
                 onExport: { onExportClip(clip.id) },
                 onCancelExport: onCancelExport,
-                onDelete: { onDeleteClip(clip.id) }
+                onRemove: { onRemoveClip(clip.id, $0) }
             )
         case .gap(_, let hourLabel, let text):
             HStack(spacing: 0) {
@@ -140,7 +140,9 @@ private struct CameraRollTimelineClipRow: View {
     let onEditStamp: () -> Void
     let onExport: () -> Void
     let onCancelExport: () -> Void
-    let onDelete: () -> Void
+    let onRemove: (ClipRemoval) -> Void
+
+    @State private var isChoosingRemoval = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -215,8 +217,10 @@ private struct CameraRollTimelineClipRow: View {
 
             Divider()
 
-            // 確認は iOS が出す（写真ライブラリから消すため）。消した動画は「最近削除した項目」に30日残る。
-            Button(role: .destructive, action: onDelete) {
+            // 押したら「Vlogishから外す / 写真からも削除」を選ばせる（写真アプリのアルバムと同じ形）。
+            Button(role: .destructive) {
+                isChoosingRemoval = true
+            } label: {
                 Label(L10n.text("削除"), systemImage: "trash")
             }
             .disabled(clip.isExporting)
@@ -240,5 +244,19 @@ private struct CameraRollTimelineClipRow: View {
         }
         .accessibilityLabel("動画の操作")
         .accessibilityIdentifier("library.clip.menu")
+        .confirmationDialog(
+            L10n.text("Vlogishから外しても、動画は写真に残ります。"),
+            isPresented: $isChoosingRemoval,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("Vlogishから外す")) {
+                onRemove(.removeFromVlogish)
+            }
+            .accessibilityIdentifier("library.clip.removeFromVlogish")
+            Button(L10n.text("写真からも削除"), role: .destructive) {
+                onRemove(.deleteFromPhotos)
+            }
+            .accessibilityIdentifier("library.clip.deleteFromPhotos")
+        }
     }
 }
