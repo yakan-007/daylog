@@ -1,0 +1,6 @@
+"CFBundleDisplayName" = "Vlogish";
+"NSCameraUsageDescription" = "Vlogish는 하루의 짧은 순간을 촬영하기 위해 카메라를 사용해요.";
+"NSMicrophoneUsageDescription" = "Vlogish는 각 순간의 주변 소리를 함께 남기기 위해 마이크를 사용해요.";
+"NSPhotoLibraryAddUsageDescription" = "Vlogish는 촬영한 동영상을 사진 보관함에 저장해요.";
+"NSPhotoLibraryUsageDescription" = "Vlogish는 지난 동영상을 보여 주고, 재생하고, 합치기 위해 앨범을 읽어요.";
+"NSLocationWhenInUseUsageDescription" = "위치 기록을 켜면 Vlogish가 각 동영상에 위치와 장소 이름을 함께 저장해요.";

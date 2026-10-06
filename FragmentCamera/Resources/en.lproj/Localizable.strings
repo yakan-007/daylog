@@ -10,7 +10,7 @@
 "あとで" = "Later";
 "もう一度" = "Try Again";
 "再読み込み" = "Reload";
-"やめる" = "Not Now";
+"やめる" = "Cancel";
 "中止" = "Cancel";
 "中断中" = "Cancelling";
 "はじめる" = "Get Started";
@@ -35,9 +35,6 @@
 "タップすると録画を停止して保存します" = "Tap to stop and save the recording";
 "%d秒の動画を撮影します" = "Record a %d-second video";
 "前後のカメラを切り替える" = "Switch Camera";
-"%d本・分割結合" = "%d clips · Chunked export";
-"分割まであと%d本" = "%d clips until chunked export";
-"残り %.1f 秒" = "%.1f sec left";
 "動画を保護中" = "Protecting Video";
 "動画を保存中" = "Saving Video";
 "今日の一覧を更新中" = "Updating Today";
@@ -223,7 +220,6 @@
 "未保存の動画があります" = "You Have an Unsaved Video";
 "保存できませんでした" = "Couldn't Save Video";
 "動画が見つかりません" = "No Videos Found";
-"動画を読み込めませんでした" = "Couldn't Load Video";
 "この端末では結合できません" = "Export Isn't Supported on This Device";
 "結合を中断しました" = "Export Cancelled";
 "結合に失敗しました" = "Export Failed";
@@ -293,7 +289,138 @@
 /* Redesign navigation */
 "撮影画面を閉じる" = "Close Camera";
 "この日まで移動" = "Jump to this day";
-"すべての動画" = "All Videos";
 "撮る" = "Capture";
-"一覧へ戻る" = "Back to All Videos";
 "ホームへ戻る" = "Back to Home";
+
+/* Clip editor (text, date, time, place layers) */
+"文字" = "Text";
+"シンプル" = "Simple";
+"帯" = "Band";
+"ぷっくり" = "Bold";
+"編集" = "Edit";
+"文字はドラッグで移動、2本指で大きさを変えられます" = "Drag text to move it. Pinch to resize.";
+"保存しています" = "Saving…";
+"上のボタンで、文字や撮影日時・場所を重ねられます。元の動画は変わりません。" = "Use the buttons above to add text, the capture date and time, or the place. The original video stays unchanged.";
+"場所の名前" = "Place name";
+"文字を入力" = "Enter text";
+"撮影日時から自動" = "From capture time";
+"このレイヤーを消す" = "Remove This Layer";
+"%@を追加" = "Add %@";
+"この動画には撮影場所がありません" = "This video has no location.";
+"（未入力）" = "(Empty)";
+"編集内容を保存できません" = "Couldn’t Save Your Edits";
+"ドラッグで移動、2本指で大きさを変えられます" = "Drag to move. Pinch to resize.";
+"ひとこと（例：東京に到着！！）" = "Add a note (e.g. Made it to Tokyo!!)";
+"ひとことを消す" = "Clear Note";
+"全体設定に戻す" = "Reset to App Settings";
+"なし" = "None";
+"表示中" = "Shown";
+"非表示" = "Hidden";
+
+/* Settings preview */
+"撮った動画には、この位置と大きさで日付が入ります。1本ずつの編集でも、ここから始まります。" = "New videos get the date in this position and size. Editing a single video starts from here too.";
+"タイムスタンプはオフです。1本ずつの編集で、日付やひとことを足せます。" = "Timestamps are off. You can still add the date or a note when editing a single video.";
+"タイムスタンプなし" = "No timestamp";
+"日付の上" = "Above Date";
+"日付の下" = "Below Date";
+"ひとことの位置" = "Note Position";
+"ひとことも一緒に消えます。2.5秒以下の動画では最後まで表示します。" = "The note fades out too. Videos of 2.5 seconds or less keep it to the end.";
+
+/* Capture screen */
+"今日の記録を開く。今日%d本" = "Open today's record. %d clips today";
+"録画中 %@" = "Recording %@";
+"上にスワイプで今日の記録" = "Swipe up for today";
+"オン" = "On";
+
+/* Playback */
+"左右で前後 · 下にスワイプで閉じる" = "Swipe sideways to browse · down to close";
+"%@。タップで一時停止" = "%@. Tap to pause";
+"再生" = "Play";
+
+/* Clip editor (video-first) */
+"文字をタップで入力 · ドラッグで移動 · 2本指で大きさ" = "Tap text to type · drag to move · pinch to resize";
+"見た目" = "Style";
+"ひとこと" = "Note";
+"再生位置" = "Playback Position";
+"再試行" = "Retry";
+"一時停止" = "Pause";
+"上" = "Top";
+"左" = "Left";
+"右" = "Right";
+"下" = "Bottom";
+"位置" = "Position";
+
+/* Settings (worldwide) */
+"%@、%@" = "%@, %@";
+"撮った動画にスタンプを入れる" = "Add a stamp to your videos";
+"オフでも、1本ずつの編集で日付やひとことを足せます。" = "Even when off, you can add the date or a note to each clip.";
+"大きさ" = "Size";
+"日付の順番" = "Date Order";
+"地域に合わせて自動" = "Automatic for your region";
+"手動で選択中" = "Set manually";
+"年 月 日" = "Y M D";
+"月 日 年" = "M D Y";
+"日 月 年" = "D M Y";
+"写真アプリや共有先でもスタンプを表示" = "Show the stamp in Photos and when sharing";
+"撮った直後の動画にスタンプを入れて保存します。写真アプリに残るスタンプは、後から変えられません。" = "The stamp is added to the video right after capture. The stamp saved in Photos can't be changed later.";
+"オフなら元の動画はそのまま。スタンプはアプリの中と書き出しのときに入り、後から変えられます。" = "When off, your original video stays untouched. The stamp appears in the app and on export, and you can change it anytime.";
+"時刻は iPhone の設定（12時間／24時間）に合わせて表示します。" = "Time follows your iPhone's 12/24-hour setting.";
+"撮影場所を記録" = "Record Capture Location";
+"記録の地名と、日付の「場所」に使います。地名を調べる時だけ Apple の地図サービスに問い合わせ、ほかには送りません。" = "Used for place names in your record and the Place in the date. It is sent only to Apple's map service to look up the place name, and nowhere else.";
+
+/* Export (join into one) */
+"準備" = "Prepare";
+"つなぐ" = "Join";
+"仕上げ" = "Finish";
+"やめています" = "Stopping";
+"1本にしています" = "Making one video";
+"アプリを開いたままにしてください。本数が多い日は少し時間がかかります。" = "Keep the app open. Days with many clips take a little longer.";
+"%@ が1本になりました" = "%@ is now one video";
+"共有・保存" = "Share or Save";
+
+/* Onboarding */
+"一瞬ずつ、\n一日を残す。" = "A few seconds at a time.\nYour whole day.";
+"1日に何度か、数秒だけ撮る。\n撮った時刻が線に並んで、夜には1本の動画になる。" = "Film a few seconds, a few times a day.\nEach moment lands on a timeline, and by night it's one video.";
+"使う前に、\n3つだけ許可してください" = "Before you start,\nallow three things";
+"カメラ" = "Camera";
+"マイク" = "Microphone";
+"写真" = "Photos";
+"数秒の動画を撮るために使います。" = "To film your few-second clips.";
+"その場の音も一緒に残します。" = "To keep the sound of the moment.";
+"撮った動画を保存して、記録として並べるために使います。" = "To save your clips and line them up as your record.";
+"動画はあなたの iPhone の写真ライブラリにだけ保存されます。アカウント登録もありません。" = "Videos are saved only to your iPhone's photo library. No account needed.";
+"続ける" = "Continue";
+"スタンプを選ぶ" = "Choose a Stamp";
+"撮った動画に入る文字です。あとで設定から変えられます。" = "The text added to your clips. You can change it later in Settings.";
+"場所を出すため、撮影のときに位置情報の許可を確認します。" = "To show the place, we'll ask for location access when you film.";
+"場所を入れると、撮った場所の地名も残ります。" = "Add Place to keep the name of where you filmed.";
+"これで始める" = "Start";
+"撮った時刻が一日の線に並ぶ様子" = "Clips lining up on a timeline of the day";
+"押すと%d秒撮れます" = "Tap to film %d seconds";
+"今日の1本目" = "Your first clip today";
+"秒数はこの下の目盛りで変えられます" = "Change the length on the scale below";
+"上にスワイプで今日の記録を見られます" = "Swipe up to see today's record";
+
+/* Today, nothing yet */
+"カメラに戻って撮る" = "Back to Camera";
+"今日の1本目は、まだ。" = "No clips yet today.";
+"撮った動画は、ここに時刻順で並びます。" = "Your clips will line up here by time.";
+
+/* Camera roll (remaining) */
+"%@  空白 %dh" = "%@  · %dh gap";
+"%@の動画を再生" = "Play the clip from %@";
+"%@を続けて再生" = "Play %@ in a row";
+"%d回撮影" = "Filmed %d times";
+"いま %@" = "Now %@";
+"この日の動画一覧を開きます" = "Opens this day's clips";
+"この日を通して見る" = "Watch This Day";
+"今日" = "Today";
+"今日、まだ動画はありません" = "No clips yet today";
+"今日を通して見る" = "Watch Today";
+"動画の操作" = "Clip Actions";
+"動画を編集" = "Edit Clip";
+"記録なし" = "No clips";
+"記録を開く" = "Open Record";
+"通して見る" = "Watch All";
+"編集データの形式（%d）には対応していません。" = "This edit data format (%d) isn't supported.";
+"編集データを読み込めませんでした。" = "Couldn't read the edit data.";

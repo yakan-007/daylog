@@ -1,0 +1,6 @@
+"CFBundleDisplayName" = "Vlogish";
+"NSCameraUsageDescription" = "Vlogish 會使用相機，拍下你一天中的短暫片刻。";
+"NSMicrophoneUsageDescription" = "Vlogish 會使用麥克風，留下每個片刻周圍的聲音。";
+"NSPhotoLibraryAddUsageDescription" = "Vlogish 會將你錄製的影片儲存到照片圖庫。";
+"NSPhotoLibraryUsageDescription" = "Vlogish 會讀取自己的相簿，以顯示、播放及合併你過去的影片。";
+"NSLocationWhenInUseUsageDescription" = "開啟位置記錄時，Vlogish 會將位置與地名和每段影片一起儲存。";
