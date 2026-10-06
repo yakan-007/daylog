@@ -15,7 +15,8 @@ enum CaptureReadinessDecision: Equatable {
     case settled
 }
 
-final class CaptureReadinessMonitor {
+/// 映像フレームのキューとメインの両方から触るため、状態はすべてロックで守る。
+final class CaptureReadinessMonitor: @unchecked Sendable {
     private let policy: CaptureReadinessPolicy
     private let lock = NSLock()
     private var frameCount = 0

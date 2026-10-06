@@ -10,6 +10,9 @@ private enum CaptureReadinessReason: Equatable {
     case ready
 }
 
+/// 撮影の状態を持つ窓口。状態とUIはすべてメインで扱い、AVFoundation の通知や
+/// デリゲートは別スレッドから届くので、必要な値だけ取り出してメインへ渡す。
+@MainActor
 final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published private(set) var state = CameraEngineState() {
         didSet {
@@ -20,12 +23,14 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         }
     }
 
-    private let captureSession = CaptureSessionController()
+    // 映像フレームのデリゲート（別スレッド）からも読むので nonisolated。どちらも内部でロック・専用キューを持つ。
+    private nonisolated let captureSession = CaptureSessionController()
     private var recordingTimer: Timer?
-    private let readinessMonitor = CaptureReadinessMonitor()
+    private nonisolated let readinessMonitor = CaptureReadinessMonitor()
     private var pendingStartDuration: TimeInterval?
     private var currentPlannedDuration: TimeInterval?
-    private var sessionDidStartObserver: NSObjectProtocol?
+    // deinit（メイン以外から呼ばれうる）で外すため。
+    private nonisolated(unsafe) var sessionDidStartObserver: NSObjectProtocol?
     private let permissionService: CameraPermissionService
     private let settingsStore: VlogishSettingsStore
     private let temporaryFileStore: TemporaryFileStore
@@ -76,7 +81,10 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             state.saveFailure = .unsavedCaptureAvailable
         }
         sessionDidStartObserver = NotificationCenter.default.addObserver(forName: AVCaptureSession.didStartRunningNotification, object: session, queue: .main) { [weak self] _ in
-            self?.handleSessionDidStartRunning()
+            // queue: .main を指定しているので、ここはメインで呼ばれる。
+            MainActor.assumeIsolated {
+                self?.handleSessionDidStartRunning()
+            }
         }
         NotificationCenter.default.addObserver(self, selector: #selector(handleSessionInterruption(_:)), name: AVCaptureSession.wasInterruptedNotification, object: session)
         NotificationCenter.default.addObserver(self, selector: #selector(handleSessionInterruptionEnded(_:)), name: AVCaptureSession.interruptionEndedNotification, object: session)
@@ -90,15 +98,8 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         NotificationCenter.default.removeObserver(self)
     }
 
-    private func updateState(_ update: @escaping (inout CameraEngineState) -> Void) {
-        if Thread.isMainThread {
-            update(&state)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                update(&self.state)
-            }
-        }
+    private func updateState(_ update: (inout CameraEngineState) -> Void) {
+        update(&state)
     }
 
     private func updateCaptureReadiness(_ reason: CaptureReadinessReason) {
@@ -156,7 +157,6 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         #endif
     }
 
-    @MainActor
     func resumeCaptureMode() {
         guard isCaptureModeSuspended else { return }
         isCaptureModeSuspended = false
@@ -170,7 +170,6 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         captureSession.startRunning()
     }
 
-    @MainActor
     func suspendCaptureMode() async {
         guard !isCaptureModeSuspended else { return }
         isCaptureModeSuspended = true
@@ -215,7 +214,9 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             withTimeInterval: duration,
             repeats: false
         ) { [weak self] _ in
-            self?.stopRecording()
+            MainActor.assumeIsolated {
+                self?.stopRecording()
+            }
         }
         #else
         if !captureSession.isReadyForRecording {
@@ -295,7 +296,14 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         updateState { $0.isRecording = false }
     }
 
-    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+    nonisolated func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        // 録画開始の通知は別スレッドから届く。
+        Task { @MainActor [weak self] in
+            self?.handleRecordingStarted()
+        }
+    }
+
+    private func handleRecordingStarted() {
         updateState { state in
             state.savePhase = .idle
             state.saveFailure = nil
@@ -304,21 +312,18 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         scheduleAutoStop()
     }
 
-    /// 決めた秒数で自動的に止めるタイマー。録画開始の通知は別スレッドから来るので、メインで仕掛ける。
+    /// 決めた秒数で自動的に止めるタイマー。
     private func scheduleAutoStop() {
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in
-                self?.scheduleAutoStop()
-            }
-            return
-        }
         guard let duration = currentPlannedDuration else { return }
         recordingTimer?.invalidate()
         recordingTimer = Timer.scheduledTimer(
             withTimeInterval: duration,
             repeats: false
         ) { [weak self] _ in
-            self?.stopRecording()
+            // メインの RunLoop に仕掛けたタイマーなので、ここはメインで呼ばれる。
+            MainActor.assumeIsolated {
+                self?.stopRecording()
+            }
         }
     }
 
@@ -383,21 +388,42 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         }
     }
 
-    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        let capturedAt = currentCapturedAt ?? Date()
-        currentCapturedAt = nil
+    nonisolated func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        // 別スレッドから届くので、エラーはここで判定と文字列にしてからメインへ渡す。
         let recordingFinishedSuccessfully: Bool = if let error {
             ((error as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? NSNumber)?.boolValue == true
         } else {
             true
         }
-        guard recordingFinishedSuccessfully else {
-            if let error {
-                AppLog.capture.error("Error recording video: \(error.localizedDescription)")
-                reportSaveFailure(VlogishFailureMapper.captureSaveFailure(from: error))
-            } else {
-                reportSaveFailure(.recordingFailed)
+        let failure: VlogishFailure? = if recordingFinishedSuccessfully {
+            nil
+        } else if let error {
+            VlogishFailureMapper.captureSaveFailure(from: error)
+        } else {
+            .recordingFailed
+        }
+        let errorDescription = error?.localizedDescription
+        Task { @MainActor [weak self] in
+            self?.handleRecordingFinished(
+                outputFileURL: outputFileURL,
+                failure: failure,
+                errorDescription: errorDescription
+            )
+        }
+    }
+
+    private func handleRecordingFinished(
+        outputFileURL: URL,
+        failure: VlogishFailure?,
+        errorDescription: String?
+    ) {
+        let capturedAt = currentCapturedAt ?? Date()
+        currentCapturedAt = nil
+        if let failure {
+            if let errorDescription {
+                AppLog.capture.error("Error recording video: \(errorDescription)")
             }
+            reportSaveFailure(failure)
             temporaryFileStore.removeIfExists(at: outputFileURL)
             saveCoordinator.cancelRecording()
             recordingTimer?.invalidate()
@@ -410,9 +436,9 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             }
             return
         }
-        if let error {
+        if let errorDescription {
             AppLog.capture.notice(
-                "capture.finish.recoverable reason=\(error.localizedDescription, privacy: .private)"
+                "capture.finish.recoverable reason=\(errorDescription, privacy: .private)"
             )
         }
         recordingTimer?.invalidate()
@@ -444,9 +470,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                 )
             }
             do {
-                await MainActor.run {
-                    self.updateState { $0.savePhase = .processing }
-                }
+                self.updateState { $0.savePhase = .processing }
                 let result = try await self.saveCoordinator.saveRecording(
                     at: saveURL,
                     capturedAt: capturedAt
@@ -456,37 +480,34 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                 }
                 let nextRecovery = self.captureRecoveryStore.recoverableCaptures().first
                 AppLog.save.info("save.success stamp_applied=\(result.stampApplied, privacy: .public) fallback=\(result.didFallback, privacy: .public)")
-                await MainActor.run {
-                    self.updateState { state in
-                        state.lastSavedAssetLocalIdentifier = result.identifier
-                        state.savePhase = .saved
-                        state.recoverableCapture = nextRecovery
-                        if nextRecovery != nil {
-                            state.saveFailure = .unsavedCaptureAvailable
-                        }
+                self.updateState { state in
+                    state.lastSavedAssetLocalIdentifier = result.identifier
+                    state.savePhase = .saved
+                    state.recoverableCapture = nextRecovery
+                    if nextRecovery != nil {
+                        state.saveFailure = .unsavedCaptureAvailable
                     }
                 }
             } catch AssetLibraryWriterError.permissionDenied {
                 AppLog.save.error("save.fail reason=permission_denied")
-                await MainActor.run { self.updateState { $0.savePhase = .idle } }
+                self.updateState { $0.savePhase = .idle }
                 self.reportSaveFailure(.photoLibraryPermission)
             } catch {
                 AppLog.save.error("save.fail reason=\(error.localizedDescription, privacy: .private)")
-                await MainActor.run { self.updateState { $0.savePhase = .idle } }
+                self.updateState { $0.savePhase = .idle }
                 self.reportSaveFailure(VlogishFailureMapper.captureSaveFailure(from: error))
             }
         }
     }
 
     func acknowledgeIndexedSave() {
-        updateState { state in
-            guard state.savePhase == .saved else { return }
-            state.savePhase = .indexed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                self.updateState { state in
-                    guard state.savePhase == .indexed else { return }
-                    state.savePhase = .idle
-                }
+        guard state.savePhase == .saved else { return }
+        updateState { $0.savePhase = .indexed }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            self?.updateState { state in
+                guard state.savePhase == .indexed else { return }
+                state.savePhase = .idle
             }
         }
     }
@@ -539,46 +560,72 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     }
 
     // MARK: - Session interruption handling
-    @objc private func handleSessionInterruption(_ notification: Notification) {
+    // AVCaptureSession の通知はメイン以外から届くことがあるので、値だけ取り出してメインへ渡す。
+    @objc private nonisolated func handleSessionInterruption(_ notification: Notification) {
+        let reasonDescription: String? = if let reasonValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
+                                            let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) {
+            String(describing: reason)
+        } else {
+            nil
+        }
+        Task { @MainActor [weak self] in
+            self?.applySessionInterruption(reasonDescription: reasonDescription)
+        }
+    }
+
+    private func applySessionInterruption(reasonDescription: String?) {
         saveCoordinator.cancelRecording()
         readinessMonitor.reset()
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        currentPlannedDuration = nil
+        pendingStartDuration = nil
+        currentCapturedAt = nil
         updateState { state in
             state.session = .interrupted
-            self.recordingTimer?.invalidate()
-            self.recordingTimer = nil
-            self.currentPlannedDuration = nil
-            self.pendingStartDuration = nil
-            self.currentCapturedAt = nil
             state.isRecording = false
         }
         updateCaptureReadiness(.interrupted)
-        if let userInfo = notification.userInfo,
-           let reasonValue = userInfo[AVCaptureSessionInterruptionReasonKey] as? Int,
-           let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) {
-            AppLog.capture.warning("Session interrupted: \(String(describing: reason), privacy: .public)")
+        if let reasonDescription {
+            AppLog.capture.warning("Session interrupted: \(reasonDescription, privacy: .public)")
         } else {
             AppLog.capture.warning("Session interrupted")
         }
     }
-    @objc private func handleSessionInterruptionEnded(_ notification: Notification) {
+
+    @objc private nonisolated func handleSessionInterruptionEnded(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.applySessionInterruptionEnded()
+        }
+    }
+
+    private func applySessionInterruptionEnded() {
         guard !isCaptureModeSuspended else { return }
         readinessMonitor.reset()
         updateCaptureReadiness(.warmingUp)
         captureSession.startRunning()
         AppLog.capture.info("Session interruption ended")
     }
-    @objc private func handleRuntimeError(_ notification: Notification) {
-        if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError {
-            AppLog.capture.error("Session runtime error: \(error.localizedDescription)")
+
+    @objc private nonisolated func handleRuntimeError(_ notification: Notification) {
+        let errorDescription = (notification.userInfo?[AVCaptureSessionErrorKey] as? NSError)?.localizedDescription
+        Task { @MainActor [weak self] in
+            self?.applyRuntimeError(errorDescription: errorDescription)
+        }
+    }
+
+    private func applyRuntimeError(errorDescription: String?) {
+        if let errorDescription {
+            AppLog.capture.error("Session runtime error: \(errorDescription)")
         }
         readinessMonitor.reset()
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        currentPlannedDuration = nil
+        pendingStartDuration = nil
+        currentCapturedAt = nil
         updateState { state in
             state.session = .preparing
-            self.recordingTimer?.invalidate()
-            self.recordingTimer = nil
-            self.currentPlannedDuration = nil
-            self.pendingStartDuration = nil
-            self.currentCapturedAt = nil
             state.isRecording = false
         }
         updateCaptureReadiness(.warmingUp)
@@ -589,15 +636,20 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     }
 
     // MARK: - Capture readiness
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    // 映像フレームごとに専用キューから呼ばれる。準備完了の判定が出た時だけメインへ渡す。
+    nonisolated func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         switch readinessMonitor.observeFrame(
             isDeviceAdjusting: captureSession.isDeviceAdjusting
         ) {
         case .ready:
-            markReadyToRecord()
+            Task { @MainActor [weak self] in
+                self?.markReadyToRecord()
+            }
         case .timedOut:
             AppLog.capture.info("warmup.timeout_reached")
-            markReadyToRecord()
+            Task { @MainActor [weak self] in
+                self?.markReadyToRecord()
+            }
         case .waiting, .settled:
             break
         }
@@ -609,14 +661,12 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             updateState { $0.session = .unavailable }
             return
         }
-        updateState { state in
-            guard state.session == .preparing else { return }
-            state.session = .ready
-            AppLog.capture.info("capture_state=ready")
-            if self.pendingStartDuration != nil {
-                self.pendingStartDuration = nil
-                self.startRecordingNow()
-            }
+        guard state.session == .preparing else { return }
+        updateState { $0.session = .ready }
+        AppLog.capture.info("capture_state=ready")
+        if pendingStartDuration != nil {
+            pendingStartDuration = nil
+            startRecordingNow()
         }
     }
 }

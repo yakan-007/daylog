@@ -29,7 +29,8 @@ enum CaptureSessionOperationError: LocalizedError {
 
 /// AVCaptureSession、入出力、端末操作を所有する低レベル境界。
 /// 録画状態や保存状態は持たず、CameraServiceへUI状態を漏らさない。
-final class CaptureSessionController {
+/// 端末操作は専用キュー、共有する値はロックで守っているので、スレッドをまたいで渡してよい。
+final class CaptureSessionController: @unchecked Sendable {
     let session = AVCaptureSession()
     lazy var previewLayer = AVCaptureVideoPreviewLayer(session: session)
 
