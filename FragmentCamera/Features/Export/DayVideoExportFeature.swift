@@ -424,7 +424,11 @@ final class DayVideoExporter {
             return url
         } catch is CancellationError {
             throw CancellationError()
+        } catch where VlogishFailureMapper.isStorageUnavailable(error) {
+            // 容量不足は、もっと重い書き出し直しに進んでも同じ結果になるので、そのまま返す。
+            throw error
         } catch {
+            // 形式の相性で失敗した時だけ、書き出し直しに切り替える。
             AppLog.export.warning(
                 "day_export.join_passthrough.fail reason=\(error.localizedDescription, privacy: .private)"
             )

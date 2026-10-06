@@ -193,7 +193,8 @@ enum VlogishFailureMapper {
         return .libraryAssetUnavailable
     }
 
-    private static func isStorageUnavailable(_ error: Error) -> Bool {
+    /// 端末の空き容量不足か。書き出しの再挑戦を止める判断にも使う。
+    static func isStorageUnavailable(_ error: Error) -> Bool {
         errorChain(error).contains { current in
             if current.domain == NSCocoaErrorDomain,
                current.code == NSFileWriteOutOfSpaceError {

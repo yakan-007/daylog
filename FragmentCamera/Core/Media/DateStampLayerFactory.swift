@@ -17,23 +17,31 @@ struct ExportEndMark: Sendable {
     static let fadeDuration: Double = 0.3
     static let opacity: Float = 0.72
 
-    let start: CMTime
-    let contentFrame: CGRect
-    /// 右下にスタンプがある時だけ、重ならないよう左下へ置く。
-    let placesOnLeft: Bool
+    /// 置く場所の候補。上から順に、空いている角を使う。
+    enum Corner: CaseIterable, Sendable {
+        case bottomTrailing
+        case bottomLeading
+        case topTrailing
+        case topLeading
+    }
 
-    init(videoDuration: CMTime, contentFrame: CGRect, lastStampPosition: DateStampPosition?) {
+    let start: CMTime
+    let end: CMTime
+    let contentFrame: CGRect
+
+    init(videoDuration: CMTime, contentFrame: CGRect) {
         let duration = max(videoDuration.seconds.isFinite ? videoDuration.seconds : 0, 0)
         start = CMTime(
             seconds: max(duration - Self.visibleDuration, 0),
             preferredTimescale: 600
         )
+        end = CMTime(seconds: duration, preferredTimescale: 600)
         self.contentFrame = contentFrame
-        if let position = lastStampPosition {
-            placesOnLeft = position.row == 2 && position.column == 2
-        } else {
-            placesOnLeft = false
-        }
+    }
+
+    /// ロゴが出ている間に、ほかの文字が見えているか。
+    func overlapsInTime(start otherStart: Double, end otherEnd: Double) -> Bool {
+        otherStart < end.seconds && otherEnd > start.seconds
     }
 }
 
@@ -76,13 +84,23 @@ enum DateStampLayerFactory {
         let stampLayers: [CALayer] = makeTimedTextLayers(stamps: stamps)
         let textLayers = stampLayers
             + VlogTextLayerFactory.makeTimedTextLayers(overlays: vlogTextOverlays)
-            + (endMark.map { [makeEndMarkLayer($0)] } ?? [])
+            + endMarkLayers(endMark, stamps: stamps, vlogTextOverlays: vlogTextOverlays)
         guard !textLayers.isEmpty else { return }
         installAnimationLayers(
             on: videoComposition,
             renderSize: renderSize,
             textLayers: textLayers
         )
+    }
+
+    private static func endMarkLayers(
+        _ mark: ExportEndMark?,
+        stamps: [TimedVideoStamp],
+        vlogTextOverlays: [TimedVlogTextOverlay]
+    ) -> [CALayer] {
+        guard let mark else { return [] }
+        let occupied = occupiedFrames(during: mark, stamps: stamps, vlogTextOverlays: vlogTextOverlays)
+        return makeEndMarkLayer(mark, avoiding: occupied).map { [$0] } ?? []
     }
 
     /// クリップ数とレイヤー数、各表示区間を動画生成なしで検証できる形に保つ。
@@ -164,7 +182,11 @@ enum DateStampLayerFactory {
     }
 
     /// 書き出しの最後に出す小さな VLOGISH。スタンプと同じ白・影で、少し透かす。
-    static func makeEndMarkLayer(_ mark: ExportEndMark) -> CATextLayer {
+    /// スタンプや「ひとこと」と重ならない角を選ぶ。4つの角が全部ふさがっていたら入れない。
+    static func makeEndMarkLayer(
+        _ mark: ExportEndMark,
+        avoiding occupied: [CGRect] = []
+    ) -> CATextLayer? {
         let size = mark.contentFrame.size
         let shortSide = min(size.width, size.height)
         let fontSize = max(10, shortSide * 0.03)
@@ -181,16 +203,32 @@ enum DateStampLayerFactory {
         let textSize = text.size()
         let width = ceil(textSize.width) + 4
         let height = ceil(textSize.height) + 2
-        let x = mark.placesOnLeft
-            ? mark.contentFrame.minX + margin
-            : mark.contentFrame.maxX - margin - width
-        // Core Animation は左下原点なので、下の余白はそのまま y になる。
-        let y = mark.contentFrame.minY + margin
+
+        // Core Animation は左下原点。下の角は minY 側になる。
+        func frame(for corner: ExportEndMark.Corner) -> CGRect {
+            let content = mark.contentFrame
+            let isLeading = corner == .bottomLeading || corner == .topLeading
+            let isBottom = corner == .bottomLeading || corner == .bottomTrailing
+            return CGRect(
+                x: isLeading ? content.minX + margin : content.maxX - margin - width,
+                y: isBottom ? content.minY + margin : content.maxY - margin - height,
+                width: width,
+                height: height
+            )
+        }
+        // 文字どうしがくっついて見えないよう、少し余裕を持って判定する。
+        let breathingRoom = margin * 0.5
+        guard let corner = ExportEndMark.Corner.allCases.first(where: { corner in
+            let candidate = frame(for: corner).insetBy(dx: -breathingRoom, dy: -breathingRoom)
+            return !occupied.contains { $0.intersects(candidate) }
+        }) else {
+            return nil
+        }
 
         let layer = CATextLayer()
         layer.string = text
-        layer.alignmentMode = mark.placesOnLeft ? .left : .right
-        layer.frame = CGRect(x: x, y: y, width: width, height: height)
+        layer.alignmentMode = (corner == .bottomLeading || corner == .topLeading) ? .left : .right
+        layer.frame = frame(for: corner)
         layer.shadowOpacity = 0.35
         layer.shadowRadius = 2
         layer.shadowOffset = CGSize(width: 0, height: 1)
@@ -206,6 +244,35 @@ enum DateStampLayerFactory {
         fadeIn.isRemovedOnCompletion = false
         layer.add(fadeIn, forKey: "vlogish-end-mark")
         return layer
+    }
+
+    /// ロゴが出ている間に画面にある、スタンプと「ひとこと」の場所。
+    static func occupiedFrames(
+        during mark: ExportEndMark,
+        stamps: [TimedVideoStamp],
+        vlogTextOverlays: [TimedVlogTextOverlay]
+    ) -> [CGRect] {
+        let stampFrames = stamps.compactMap { stamp -> CGRect? in
+            guard stamp.context.stampEnabled else { return nil }
+            let start = stamp.start.seconds
+            var visibleEnd = start + stamp.duration.seconds
+            if stamp.context.fadesOut, stamp.duration.seconds > 2 {
+                visibleEnd = min(visibleEnd, start + 2.5)
+            }
+            guard mark.overlapsInTime(start: start, end: visibleEnd) else { return nil }
+            return makeTextLayer(contentFrame: stamp.contentFrame, context: stamp.context).frame
+        }
+        let overlayFrames = vlogTextOverlays.compactMap { timed -> CGRect? in
+            let start = timed.start.seconds
+            guard mark.overlapsInTime(start: start, end: start + timed.duration.seconds) else {
+                return nil
+            }
+            return VlogTextLayerFactory.makeLayer(
+                overlay: timed.overlay,
+                contentFrame: timed.contentFrame
+            ).frame
+        }
+        return stampFrames + overlayFrames
     }
 
     private static func fontReference(font: UIFont) -> CFTypeRef {

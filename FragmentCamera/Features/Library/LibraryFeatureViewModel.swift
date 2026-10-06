@@ -33,6 +33,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     private var observationTask: Task<Void, Never>?
     private var hasLoaded = false
     private var refreshInFlight = false
+    /// 更新中に届いた更新要求。捨てずに、今の更新が終わったらもう一度だけ走らせる。
+    private var pendingRefresh: (requestAuthorization: Bool, reportsFailure: Bool)?
     private var isLoadingMore = false
     private var lastLoadedCursor: String?
     /// 一覧を作り直すたびに増える。追加読み込みの結果が、作り直した後の一覧に混ざらないようにする。
@@ -122,7 +124,16 @@ final class LibraryFeatureViewModel: ObservableObject {
         requestAuthorizationIfNeeded: Bool,
         reportsFailure: Bool
     ) async {
-        guard !refreshInFlight else { return }
+        guard !refreshInFlight else {
+            // 削除の通知と削除後の手動更新が重なっても、最新の状態を必ず読み直す。
+            pendingRefresh = (
+                requestAuthorization: (pendingRefresh?.requestAuthorization ?? false)
+                    || requestAuthorizationIfNeeded,
+                reportsFailure: (pendingRefresh?.reportsFailure ?? false) || reportsFailure
+            )
+            await waitForRefreshToFinish()
+            return
+        }
         refreshInFlight = true
         isRefreshing = true
         defer {
@@ -130,6 +141,25 @@ final class LibraryFeatureViewModel: ObservableObject {
             refreshInFlight = false
         }
 
+        var request = (
+            requestAuthorization: requestAuthorizationIfNeeded,
+            reportsFailure: reportsFailure
+        )
+        while true {
+            await performRefresh(
+                requestAuthorizationIfNeeded: request.requestAuthorization,
+                reportsFailure: request.reportsFailure
+            )
+            guard let next = pendingRefresh else { break }
+            pendingRefresh = nil
+            request = next
+        }
+    }
+
+    private func performRefresh(
+        requestAuthorizationIfNeeded: Bool,
+        reportsFailure: Bool
+    ) async {
         do {
             let refreshed = try await useCase.refresh(
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
@@ -184,7 +214,6 @@ final class LibraryFeatureViewModel: ObservableObject {
             return
         }
 
-        guard !refreshInFlight else { return }
         await refreshLibrary(
             requestAuthorizationIfNeeded: false,
             reportsFailure: true

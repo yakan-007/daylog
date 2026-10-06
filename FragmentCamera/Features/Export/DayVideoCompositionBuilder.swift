@@ -129,11 +129,9 @@ final class DayVideoCompositionBuilder {
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = encodingPolicy.frameDuration
         let endMark: ExportEndMark? = addsEndMark ? layouts.last.map { last in
-            let lastContext = stampContexts.count == layouts.count ? stampContexts.last ?? nil : nil
-            return ExportEndMark(
+            ExportEndMark(
                 videoDuration: cursor,
-                contentFrame: contentFrame(for: last, renderSize: renderSize),
-                lastStampPosition: lastContext?.stampEnabled == true ? lastContext?.position : nil
+                contentFrame: contentFrame(for: last, renderSize: renderSize)
             )
         } : nil
         if stampContexts.count == layouts.count || textOverlaysByClip.count == layouts.count || endMark != nil {
