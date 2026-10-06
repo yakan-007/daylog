@@ -22,7 +22,7 @@ final class CaptureFeatureViewModel: ObservableObject {
     @Published private(set) var state: CaptureFeatureState
 
     let cameraService: CameraService
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
     private var cancellables: Set<AnyCancellable> = []
     private var progressTask: Task<Void, Never>?
     private var lastZoomFactor: CGFloat = 1
@@ -32,7 +32,7 @@ final class CaptureFeatureViewModel: ObservableObject {
 
     init(
         cameraService: CameraService,
-        settingsStore: DaylogSettingsStore = DaylogSettingsStore()
+        settingsStore: VlogishSettingsStore = VlogishSettingsStore()
     ) {
         self.cameraService = cameraService
         self.settingsStore = settingsStore
@@ -218,7 +218,7 @@ final class CaptureFeatureViewModel: ObservableObject {
     }
 
     var saveErrorMessage: String {
-        let message = state.engine.saveFailure?.message ?? DaylogFailure.saveFailed.message
+        let message = state.engine.saveFailure?.message ?? VlogishFailure.saveFailed.message
         guard state.engine.recoverableCapture != nil,
               state.engine.saveFailure != .unsavedCaptureAvailable else {
             return message
@@ -227,7 +227,7 @@ final class CaptureFeatureViewModel: ObservableObject {
     }
 
     var saveErrorTitle: String {
-        state.engine.saveFailure?.title ?? DaylogFailure.saveFailed.title
+        state.engine.saveFailure?.title ?? VlogishFailure.saveFailed.title
     }
 
     var saveErrorRequiresSettings: Bool {

@@ -15,22 +15,38 @@ struct ContentView: View {
     @State private var showsIntro = false
     @State private var showsSettings = false
     @State private var presentedPlaybackRoute: PlaybackRoute?
-    @State private var deferredPlaybackRoute: PlaybackRoute?
     @State private var isPreparingPlayback = false
     @State private var recoveryShareItem: RecoveryShareItem?
+    /// 記録シートの高さ。開くときは毎回「半分」から。
+    @State private var librarySheetDetent: PresentationDetent = .libraryPeek
+    /// 記録シートを全画面にしたとき、少し待ってからカメラを止める（行き来でセッションを何度も止めないため）。
+    @State private var pendingCaptureSuspend: Task<Void, Never>?
+    /// 撮影画面での一言（はじめての撮影の前後に1回ずつ）。
+    @State private var captureCoach: CaptureCoachMark?
+    @State private var showsFirstClipCoachAfterSave = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         CaptureScreenView(
             state: captureViewModel.screenState,
             latestThumbnail: libraryViewModel.latestThumbnail,
-            todayClipCount: libraryViewModel.clipCountToday,
-            showsIntro: showsIntro,
+            todayTimeline: libraryViewModel.todayTimeline,
+            coachMark: captureCoach,
             actions: captureActions
         ) {
             CameraPreviewView(cameraService: captureViewModel.cameraService)
         }
         .preferredColorScheme(.dark)
+        .overlay {
+            // はじめての案内。撮影画面の上に重ね、終わるまでカメラは動かさない。
+            if showsIntro {
+                OnboardingView(settingsViewModel: settingsViewModel, onFinish: dismissIntro)
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: captureViewModel.screenState.isRecording) { _, isRecording in
+            updateCaptureCoach(isRecording: isRecording)
+        }
         .overlay {
             if isPlaybackTransitionActive {
                 Color.black
@@ -47,11 +63,11 @@ struct ContentView: View {
             handleLibraryPresentationChanged(isPresented)
             synchronizeCaptureMode()
         }
-        .onChange(of: showsSettings) { _, _ in
+        .onChange(of: librarySheetDetent) { _, _ in
             synchronizeCaptureMode()
         }
-        .onChange(of: settingsViewModel.captureOrientationModeKey) { _, _ in
-            applyCaptureOrientation()
+        .onChange(of: showsSettings) { _, _ in
+            synchronizeCaptureMode()
         }
         .onChange(of: showsIntro) { _, _ in
             synchronizeCaptureMode()
@@ -67,20 +83,25 @@ struct ContentView: View {
             synchronizeCaptureMode()
         }
         .sheet(isPresented: $libraryViewModel.isPresentingLibrary) {
-            DaylogLibrarySheetView(viewModel: libraryViewModel)
-                .presentationDetents([.large])
+            VlogishLibrarySheetView(
+                viewModel: libraryViewModel,
+                onExpand: { librarySheetDetent = .large }
+            )
+                // 再生は記録シートの上に重ねる。閉じると、開いていた画面・高さ・スクロール位置のまま記録に戻る。
+                .sheet(item: $presentedPlaybackRoute, onDismiss: handlePlaybackDismissed) { route in
+                    PlaybackFeatureView(
+                        route: route,
+                        makeLibraryClipBrowser: makeLibraryClipBrowser
+                    )
+                    .preferredColorScheme(.dark)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(30)
+                }
+                .presentationDetents([.libraryPeek, .large], selection: $librarySheetDetent)
+                .presentationContentInteraction(.resizes)
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(30)
-        }
-        .sheet(item: $presentedPlaybackRoute, onDismiss: handlePlaybackDismissed) { route in
-            PlaybackFeatureView(
-                route: route,
-                makeLibraryClipBrowser: makeLibraryClipBrowser
-            )
-            .preferredColorScheme(.dark)
-            .presentationDetents([.large])
-            .presentationDragIndicator(.hidden)
-            .presentationCornerRadius(30)
         }
         .sheet(isPresented: $showsSettings) {
             SettingsFeatureView(viewModel: settingsViewModel)
@@ -136,8 +157,7 @@ struct ContentView: View {
             onExposureEnded: captureViewModel.applyExposureEnded,
             onZoomChanged: captureViewModel.applyPinchChanged,
             onZoomEnded: captureViewModel.applyPinchEnded,
-            onSelectZoom: captureViewModel.selectZoomFactor,
-            onDismissIntro: dismissIntro
+            onSelectZoom: captureViewModel.selectZoomFactor
         )
     }
 
@@ -175,69 +195,121 @@ struct ContentView: View {
         showsIntro = !settingsViewModel.hasSeenCaptureIntroCard
         if !showsIntro {
             captureViewModel.prepare()
+            if !settingsViewModel.hasSeenCaptureCoach {
+                captureCoach = .shutter
+            }
         }
     }
 
     private func dismissIntro() {
         settingsViewModel.markCaptureIntroSeen()
         captureViewModel.prepare()
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.easeOut(duration: 0.25)) {
             showsIntro = false
+        }
+        if !settingsViewModel.hasSeenCaptureCoach {
+            captureCoach = .shutter
         }
     }
 
+    /// 撮り始めたらシャッターの案内を消し、撮り終えたら「今日の1本目」を数秒だけ出す。
+    private func updateCaptureCoach(isRecording: Bool) {
+        if isRecording {
+            guard captureCoach == .shutter else { return }
+            captureCoach = nil
+            showsFirstClipCoachAfterSave = true
+            settingsViewModel.markCaptureCoachSeen()
+            return
+        }
+        guard showsFirstClipCoachAfterSave else { return }
+        showsFirstClipCoachAfterSave = false
+        captureCoach = .firstClip
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            if captureCoach == .firstClip {
+                captureCoach = nil
+            }
+        }
+    }
+
+    /// 再生はいつも記録シートから始まる。シートが閉じていたら（閉じる途中など）再生しない。
     private func handlePlaybackRoute(_ route: PlaybackRoute?) {
         guard let route else { return }
-        if libraryViewModel.isPresentingLibrary {
-            deferredPlaybackRoute = route
-            libraryViewModel.isPresentingLibrary = false
+        guard libraryViewModel.isPresentingLibrary else {
+            libraryViewModel.clearPlaybackRoute()
             return
         }
         presentPlayback(for: route)
     }
 
     private func handleLibraryPresentationChanged(_ isPresented: Bool) {
-        guard !isPresented, let route = deferredPlaybackRoute else { return }
-        deferredPlaybackRoute = nil
-        Task { @MainActor in
-            await Task.yield()
-            presentPlayback(for: route)
+        // 記録を開いたら、1本目の後の案内はもう要らない。
+        if isPresented, captureCoach == .firstClip {
+            captureCoach = nil
+        }
+        if !isPresented {
+            // 次に開くときは、また半分の高さから。
+            librarySheetDetent = .libraryPeek
         }
     }
 
     private func handlePlaybackDismissed() {
         libraryViewModel.clearPlaybackRoute()
         presentedPlaybackRoute = nil
-        deferredPlaybackRoute = nil
         synchronizeCaptureMode()
     }
 
     private func presentPlayback(for route: PlaybackRoute) {
-        guard presentedPlaybackRoute == nil else { return }
-        guard !isPreparingPlayback else { return }
+        guard presentedPlaybackRoute == nil, !isPreparingPlayback else {
+            // 二重タップなど。進行中の再生を優先し、後から来た要求は捨てる。
+            if presentedPlaybackRoute?.id != route.id {
+                libraryViewModel.clearPlaybackRoute()
+            }
+            return
+        }
 
         isPreparingPlayback = true
         Task {
+            // 音声の切り替えのため、先にカメラを止めてから再生を出す。
             await captureViewModel.enterPlaybackMode()
             await MainActor.run {
-                presentedPlaybackRoute = route
                 isPreparingPlayback = false
+                guard libraryViewModel.isPresentingLibrary else {
+                    // 準備中に記録シートが閉じられた。再生はせず撮影へ戻す。
+                    libraryViewModel.clearPlaybackRoute()
+                    synchronizeCaptureMode()
+                    return
+                }
+                presentedPlaybackRoute = route
             }
         }
     }
 
     private func synchronizeCaptureMode() {
-        let shouldRun = scenePhase == .active
+        pendingCaptureSuspend?.cancel()
+        pendingCaptureSuspend = nil
+
+        let canRun = scenePhase == .active
             && !showsIntro
-            && !libraryViewModel.isPresentingLibrary
             && !showsSettings
             && presentedPlaybackRoute == nil
             && libraryViewModel.playbackRoute == nil
             && !isPreparingPlayback
             && recoveryShareItem == nil
-        if shouldRun {
+        // 記録シートが半分のときは、後ろのカメラを動かしたままにする（すぐ撮れるように）。
+        let isLibraryCoveringCamera = libraryViewModel.isPresentingLibrary
+            && librarySheetDetent != .libraryPeek
+
+        if canRun && !isLibraryCoveringCamera {
             captureViewModel.prepare()
             captureViewModel.resumeCaptureMode()
+        } else if canRun {
+            // 全画面にしただけなら、すぐ半分に戻すこともあるので少し待ってから止める。
+            pendingCaptureSuspend = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                guard !Task.isCancelled else { return }
+                await captureViewModel.suspendCaptureMode()
+            }
         } else {
             Task {
                 await captureViewModel.suspendCaptureMode()
@@ -250,8 +322,8 @@ struct ContentView: View {
         recoveryShareItem = RecoveryShareItem(url: url)
     }
 
+    /// 撮影は縦固定。復帰時などにプレビューの回転だけ合わせ直す。
     private func applyCaptureOrientation() {
-        DaylogOrientationController.apply(settingsViewModel.captureOrientationMode)
         captureViewModel.refreshPreviewOrientation()
     }
 }

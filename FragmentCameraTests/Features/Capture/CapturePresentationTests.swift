@@ -17,19 +17,53 @@ final class CapturePresentationTests: XCTestCase {
         XCTAssertNil(state.statusText)
     }
 
-    func testRecordingStateMapsProgressAndRemainingTime() {
+    func testRecordingStateMapsProgressAndClock() {
         var capture = CaptureFeatureState()
         capture.engine.session = .ready
         capture.engine.isRecording = true
-        capture.recordingProgress = 0.5
-        capture.recordingRemaining = 1.25
+        capture.selectedDuration = 3
+        capture.recordingProgress = 0.6
+        capture.recordingRemaining = 1.2
 
         let state = CapturePresenter.makeState(capture: capture)
 
         XCTAssertTrue(state.isRecording)
-        XCTAssertEqual(state.recordingProgress, 0.5)
-        XCTAssertEqual(state.statusText, "残り 1.2 秒")
+        XCTAssertEqual(state.recordingProgress, 0.6)
+        // 経過は上部のREC表示に出すので、中央のステータスは空になる。
+        XCTAssertNil(state.statusText)
+        XCTAssertEqual(state.recordingClockText, "00:01.8 / 00:03")
         XCTAssertTrue(state.isShutterEnabled)
+    }
+
+    func testIdleStateHasNoRecordingClock() {
+        var capture = CaptureFeatureState()
+        capture.engine.session = .ready
+
+        XCTAssertNil(CapturePresenter.makeState(capture: capture).recordingClockText)
+    }
+
+    func testRecordingClockClampsOutOfRangeValues() {
+        XCTAssertEqual(CaptureRecordingClock.text(remaining: 5, duration: 5), "00:00.0 / 00:05")
+        XCTAssertEqual(CaptureRecordingClock.text(remaining: -1, duration: 2), "00:02.0 / 00:02")
+        XCTAssertEqual(CaptureRecordingClock.text(remaining: 9, duration: 1), "00:00.0 / 00:01")
+        XCTAssertEqual(CaptureRecordingClock.text(remaining: .nan, duration: 3), "00:00.0 / 00:03")
+    }
+
+    func testTodayTimelineOnlyCountsClipsOnTheGivenDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let day = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 6)))
+        let sixAM = day.addingTimeInterval(6 * 3_600)
+        let noon = day.addingTimeInterval(12 * 3_600)
+        let yesterdayNight = day.addingTimeInterval(-1 * 3_600)
+        let timeline = CaptureTodayTimeline(clipDates: [noon, yesterdayNight, sixAM])
+
+        XCTAssertEqual(timeline.clipCount(on: noon, calendar: calendar), 2)
+        XCTAssertEqual(timeline.clipFractions(on: noon, calendar: calendar), [0.25, 0.5])
+        // 日付が変わった直後は、前日の記録を今日として数えない。
+        let tomorrow = day.addingTimeInterval(24 * 3_600 + 60)
+        XCTAssertEqual(timeline.clipCount(on: tomorrow, calendar: calendar), 0)
+        XCTAssertEqual(CaptureTodayTimeline.nowFraction(day.addingTimeInterval(18 * 3_600), calendar: calendar), 0.75)
     }
 
     func testSavingStatePreventsStartingAnotherRecording() {

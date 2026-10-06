@@ -4,13 +4,13 @@ import OSLog
 
 final class CaptureSaveCoordinator {
     private let pipeline: CaptureSavePipeline
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
     private let locationService: CaptureLocationService
     private let placeNameResolver: any PlaceNameResolving
 
     init(
         pipeline: CaptureSavePipeline,
-        settingsStore: DaylogSettingsStore,
+        settingsStore: VlogishSettingsStore,
         locationService: CaptureLocationService,
         placeNameResolver: any PlaceNameResolving = PlaceNameResolver()
     ) {

@@ -140,7 +140,7 @@ final class CaptureSavePipeline {
             let saveResult = try await assetLibraryWriter.saveVideo(
                 originalURL: outputURL,
                 renderedURL: processed.finalURL,
-                adjustmentData: try DaylogStampAdjustment.makePhotoAdjustment(context: context),
+                adjustmentData: try VlogishStampAdjustment.makePhotoAdjustment(context: context),
                 location: location
             )
             identifier = saveResult.identifier

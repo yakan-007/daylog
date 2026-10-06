@@ -1,9 +1,9 @@
 import SwiftUI
 
 @main
-struct FragmentCameraApp: App {
-    @UIApplicationDelegateAdaptor(DaylogAppDelegate.self) private var appDelegate
-    @StateObject private var container = DaylogContainer()
+struct VlogishApp: App {
+    @UIApplicationDelegateAdaptor(VlogishAppDelegate.self) private var appDelegate
+    @StateObject private var container = VlogishContainer()
 
     var body: some Scene {
         WindowGroup {

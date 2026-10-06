@@ -55,4 +55,25 @@ final class CaptureReadinessMonitorTests: XCTestCase {
         monitor.reset(at: start.addingTimeInterval(1))
         XCTAssertEqual(monitor.observeFrame(isDeviceAdjusting: false, at: start.addingTimeInterval(1)), .waiting)
     }
+
+    func testDecisionIsReportedOnlyOnceUntilReset() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let monitor = CaptureReadinessMonitor(
+            policy: CaptureReadinessPolicy(
+                minimumFrameCount: 10,
+                minimumStableFrameCount: 10,
+                timeout: 1,
+                minimumFrameCountForTimeout: 2
+            ),
+            now: start
+        )
+
+        _ = monitor.observeFrame(isDeviceAdjusting: true, at: start)
+        XCTAssertEqual(monitor.observeFrame(isDeviceAdjusting: true, at: start.addingTimeInterval(1)), .timedOut)
+        XCTAssertEqual(monitor.observeFrame(isDeviceAdjusting: true, at: start.addingTimeInterval(2)), .settled)
+        XCTAssertEqual(monitor.observeFrame(isDeviceAdjusting: false, at: start.addingTimeInterval(3)), .settled)
+
+        monitor.reset(at: start.addingTimeInterval(4))
+        XCTAssertEqual(monitor.observeFrame(isDeviceAdjusting: true, at: start.addingTimeInterval(4)), .waiting)
+    }
 }

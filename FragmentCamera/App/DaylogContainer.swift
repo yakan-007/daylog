@@ -2,20 +2,20 @@ import Combine
 import Foundation
 
 @MainActor
-final class DaylogContainer: ObservableObject {
+final class VlogishContainer: ObservableObject {
     let cameraService: CameraService
     let captureViewModel: CaptureFeatureViewModel
     let libraryViewModel: LibraryFeatureViewModel
     let settingsViewModel: SettingsViewModel
 
-    private let repository: DaylogPhotoLibraryRepository
+    private let repository: VlogishPhotoLibraryRepository
     private let store: ClipMetadataStore
     private let thumbnailService: ThumbnailService
-    private let libraryUseCase: DaylogLibraryUseCase
+    private let libraryUseCase: VlogishLibraryUseCase
     private let dayVideoExporter: DayVideoExporter
     private let libraryVideoExportService: LibraryVideoExportService
     private let mediaExporter: MediaExporter
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
     private let temporaryFileStore: TemporaryFileStore
     private let stampRecipeStore: VideoStampRecipeStore
     private let clipEditStore: VlogClipEditStore
@@ -35,9 +35,9 @@ final class DaylogContainer: ObservableObject {
         )
         self.mediaExporter = MediaExporter(temporaryFileStore: temporaryFileStore)
         self.store = ClipMetadataStore()
-        self.repository = DaylogPhotoLibraryRepository(albumName: AppIdentity.photoAlbumName)
+        self.repository = VlogishPhotoLibraryRepository(albumName: AppIdentity.photoAlbumName)
         self.thumbnailService = ThumbnailService(repository: repository)
-        self.libraryUseCase = DaylogLibraryUseCase(store: store, repository: repository)
+        self.libraryUseCase = VlogishLibraryUseCase(store: store, repository: repository)
         self.dayVideoExporter = DayVideoExporter(
             temporaryFileStore: temporaryFileStore,
             mediaExporter: mediaExporter
@@ -94,7 +94,7 @@ final class DaylogContainer: ObservableObject {
     }
 
     /// UIテスト中は実利用の設定を変更しないよう、専用のUserDefaultsへ分離する。
-    private static func makeSettingsStore() -> DaylogSettingsStore {
+    private static func makeSettingsStore() -> VlogishSettingsStore {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-testing") {
@@ -105,15 +105,16 @@ final class DaylogContainer: ObservableObject {
             if arguments.contains("-ui-testing-reset-settings") {
                 defaults.removePersistentDomain(forName: suiteName)
             }
-            let store = DaylogSettingsStore(defaults: defaults)
+            let store = VlogishSettingsStore(defaults: defaults)
             store.hasSeenCaptureIntroCard = true
+            store.hasSeenCaptureCoach = true
             if arguments.contains("-ui-testing-disable-stamp-fade") {
                 store.stampFadesOut = false
             }
             return store
         }
 #endif
-        return DaylogSettingsStore()
+        return VlogishSettingsStore()
     }
 
     func makeLibraryClipBrowser(context: LibraryClipPlaybackContext) -> LibraryClipBrowserViewModel {

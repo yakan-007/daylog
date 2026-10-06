@@ -11,7 +11,14 @@ private enum CaptureReadinessReason: Equatable {
 }
 
 final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
-    @Published private(set) var state = CameraEngineState()
+    @Published private(set) var state = CameraEngineState() {
+        didSet {
+            // 準備中に戻ったら、準備完了の判定をやり直す（判定は一度出したら次のリセットまで止まる）。
+            if state.session == .preparing, oldValue.session != .preparing {
+                readinessMonitor.reset()
+            }
+        }
+    }
 
     private let captureSession = CaptureSessionController()
     private var recordingTimer: Timer?
@@ -20,7 +27,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     private var currentPlannedDuration: TimeInterval?
     private var sessionDidStartObserver: NSObjectProtocol?
     private let permissionService: CameraPermissionService
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
     private let temporaryFileStore: TemporaryFileStore
     private let captureRecoveryStore: CaptureRecoveryStore
     private let saveCoordinator: CaptureSaveCoordinator
@@ -40,7 +47,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         permissionService: CameraPermissionService = CameraPermissionService(),
         postProcessPipeline: VideoPostProcessPipeline = VideoPostProcessPipeline(),
         assetLibraryWriter: AssetLibraryWriter = AssetLibraryWriter(albumName: AppIdentity.photoAlbumName),
-        settingsStore: DaylogSettingsStore = DaylogSettingsStore(),
+        settingsStore: VlogishSettingsStore = VlogishSettingsStore(),
         temporaryFileStore: TemporaryFileStore = TemporaryFileStore(),
         locationService: CaptureLocationService = CaptureLocationService(),
         captureRecoveryStore: CaptureRecoveryStore = CaptureRecoveryStore(),
@@ -131,7 +138,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
 #else
         updateCaptureReadiness(.warmingUp)
         configureAudioSession()
-        captureSession.setCaptureOrientation(settingsStore.captureOrientationMode)
+        captureSession.setCaptureOrientation(.current)
         switch captureSession.configure(sampleBufferDelegate: self) {
         case .configured(let isTorchAvailable):
             updateState { $0.isTorchAvailable = isTorchAvailable }
@@ -157,7 +164,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         guard state.session != .blocked, state.session != .unavailable else { return }
         configureAudioSession()
         saveCoordinator.prepareForRecording()
-        captureSession.setCaptureOrientation(settingsStore.captureOrientationMode)
+        captureSession.setCaptureOrientation(.current)
         readinessMonitor.reset()
         updateCaptureReadiness(.warmingUp)
         captureSession.startRunning()
@@ -194,7 +201,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         guard !captureSession.isRecording else { return }
         #endif
         AppLog.capture.info("capture.start duration=\(duration, privacy: .public)")
-        captureSession.setCaptureOrientation(settingsStore.captureOrientationMode)
+        captureSession.setCaptureOrientation(.current)
         configureAudioSession()
         saveCoordinator.prepareForRecording()
         recordingTimer?.invalidate()
@@ -344,7 +351,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     }
 
     func refreshPreviewOrientation() {
-        captureSession.setCaptureOrientation(settingsStore.captureOrientationMode)
+        captureSession.setCaptureOrientation(.current)
         captureSession.refreshPreviewRotation()
     }
 
@@ -376,7 +383,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         guard recordingFinishedSuccessfully else {
             if let error {
                 AppLog.capture.error("Error recording video: \(error.localizedDescription)")
-                reportSaveFailure(DaylogFailureMapper.captureSaveFailure(from: error))
+                reportSaveFailure(VlogishFailureMapper.captureSaveFailure(from: error))
             } else {
                 reportSaveFailure(.recordingFailed)
             }
@@ -455,7 +462,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             } catch {
                 AppLog.save.error("save.fail reason=\(error.localizedDescription, privacy: .private)")
                 await MainActor.run { self.updateState { $0.savePhase = .idle } }
-                self.reportSaveFailure(DaylogFailureMapper.captureSaveFailure(from: error))
+                self.reportSaveFailure(VlogishFailureMapper.captureSaveFailure(from: error))
             }
         }
     }
@@ -508,7 +515,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         updateState { $0.isPermissionAlertPresented = false }
     }
 
-    private func reportSaveFailure(_ failure: DaylogFailure) {
+    private func reportSaveFailure(_ failure: VlogishFailure) {
         updateState { $0.saveFailure = failure }
     }
 
@@ -580,7 +587,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         case .timedOut:
             AppLog.capture.info("warmup.timeout_reached")
             markReadyToRecord()
-        case .waiting:
+        case .waiting, .settled:
             break
         }
     }

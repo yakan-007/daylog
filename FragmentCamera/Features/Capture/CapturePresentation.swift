@@ -101,6 +101,8 @@ struct CaptureScreenState: Equatable {
     let exposureBiasRange: ClosedRange<Float>
     let isFocusAndExposureLocked: Bool
     let permissionMessage: String?
+    /// 録画中だけ値が入る。例: "00:01.8 / 00:03"
+    var recordingClockText: String? = nil
 
     var isShutterEnabled: Bool {
         isReadyToRecord || isRecording
@@ -129,14 +131,20 @@ enum CapturePresenter {
             exposureBias: capture.exposureBias,
             exposureBiasRange: capture.exposureBiasRange,
             isFocusAndExposureLocked: capture.isFocusAndExposureLocked,
-            permissionMessage: capture.engine.permissionIssue?.message
+            permissionMessage: capture.engine.permissionIssue?.message,
+            recordingClockText: capture.engine.isRecording
+                ? CaptureRecordingClock.text(
+                    remaining: capture.recordingRemaining ?? capture.selectedDuration,
+                    duration: capture.selectedDuration
+                )
+                : nil
         )
     }
 
     private static func statusText(for capture: CaptureFeatureState) -> String? {
         if capture.engine.isRecording {
-            let remaining = capture.recordingRemaining ?? capture.selectedDuration
-            return L10n.text("残り %.1f 秒", remaining)
+            // 録画中は上部のREC表示が経過を示すので、中央には何も出さない。
+            return nil
         }
 
         switch capture.engine.savePhase {
@@ -163,4 +171,70 @@ enum CapturePresenter {
             }
         }
     }
+}
+
+// MARK: - Recording clock
+
+/// 録画中の上部表示。経過は0.1秒単位、合計は秒単位で出す。
+enum CaptureRecordingClock {
+    static func text(remaining: TimeInterval, duration: TimeInterval) -> String {
+        let total = duration.isFinite ? max(duration, 0) : 0
+        let rest = remaining.isFinite ? min(max(remaining, 0), total) : total
+        let elapsed = total - rest
+        let elapsedMinutes = Int(elapsed) / 60
+        let elapsedSeconds = elapsed - Double(elapsedMinutes * 60)
+        let totalSeconds = Int(total.rounded())
+        return String(
+            format: "%02d:%04.1f / %02d:%02d",
+            elapsedMinutes,
+            elapsedSeconds,
+            totalSeconds / 60,
+            totalSeconds % 60
+        )
+    }
+}
+
+// MARK: - Today timeline
+
+/// 撮影画面上部の「今日のミニ時間軸」の材料。
+/// 日付をまたいでも正しく描けるよう、集計済みの数ではなく撮影時刻をそのまま持つ。
+struct CaptureTodayTimeline: Equatable {
+    var clipDates: [Date] = []
+
+    func clipDates(on day: Date, calendar: Calendar = .current) -> [Date] {
+        clipDates.filter { calendar.isDate($0, inSameDayAs: day) }
+    }
+
+    func clipCount(on day: Date, calendar: Calendar = .current) -> Int {
+        clipDates(on: day, calendar: calendar).count
+    }
+
+    /// 0〜1。カメラロールの時間軸と同じ物差し。
+    func clipFractions(on day: Date, calendar: Calendar = .current) -> [Double] {
+        clipDates(on: day, calendar: calendar)
+            .map { CameraRollTimeAxis.fraction(of: $0, calendar: calendar) }
+            .sorted()
+    }
+
+    static func nowFraction(_ now: Date, calendar: Calendar = .current) -> Double {
+        CameraRollTimeAxis.fraction(of: now, calendar: calendar)
+    }
+
+    static func dateText(_ day: Date) -> String {
+        CameraRollStampFormat.date.string(from: day)
+    }
+
+    static func weekdayText(_ day: Date) -> String {
+        CameraRollStampFormat.weekday.string(from: day).uppercased()
+    }
+}
+
+// MARK: - Coach marks
+
+/// 撮影画面での一言。どちらも1回だけ出す。
+enum CaptureCoachMark: Equatable {
+    /// 最初の撮影の前。シャッターを光らせて「押すと◯秒撮れます」。
+    case shutter
+    /// 最初の1本を撮った後。「上にスワイプで今日の記録」。
+    case firstClip
 }

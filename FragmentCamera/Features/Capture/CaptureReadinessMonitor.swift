@@ -11,6 +11,8 @@ enum CaptureReadinessDecision: Equatable {
     case waiting
     case ready
     case timedOut
+    /// 準備完了をすでに伝えた後。次の reset までは何もしない。
+    case settled
 }
 
 final class CaptureReadinessMonitor {
@@ -19,6 +21,8 @@ final class CaptureReadinessMonitor {
     private var frameCount = 0
     private var stableFrameCount = 0
     private var resetAt: Date
+    /// ready / timedOut を一度返したか。毎フレームの再通知（メインスレッドへの往復とログ）を防ぐ。
+    private var hasDecided = false
 
     init(
         policy: CaptureReadinessPolicy = CaptureReadinessPolicy(),
@@ -34,22 +38,26 @@ final class CaptureReadinessMonitor {
         frameCount = 0
         stableFrameCount = 0
         resetAt = now
+        hasDecided = false
     }
 
     func observeFrame(isDeviceAdjusting: Bool, at now: Date = Date()) -> CaptureReadinessDecision {
         lock.lock()
         defer { lock.unlock() }
 
+        guard !hasDecided else { return .settled }
         frameCount += 1
         stableFrameCount = isDeviceAdjusting ? 0 : stableFrameCount + 1
 
         if frameCount >= policy.minimumFrameCount,
            stableFrameCount >= policy.minimumStableFrameCount {
+            hasDecided = true
             return .ready
         }
 
         if frameCount >= policy.minimumFrameCountForTimeout,
            now.timeIntervalSince(resetAt) >= policy.timeout {
+            hasDecided = true
             return .timedOut
         }
 
