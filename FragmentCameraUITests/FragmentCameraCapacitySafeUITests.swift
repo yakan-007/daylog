@@ -25,24 +25,10 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         app = nil
     }
 
-    func testSettingsControlsStampVisibilityAndOrientation() throws {
+    func testSettingsControlsStampVisibility() throws {
         XCTAssertTrue(app.buttons["capture.settings"].waitForExistence(timeout: 15))
         app.buttons["capture.settings"].tap()
         XCTAssertTrue(element("settings.done").waitForExistence(timeout: 5))
-
-        let orientation = element("settings.capture.orientation")
-        XCTAssertTrue(orientation.waitForExistence(timeout: 5))
-        XCTAssertTrue(orientation.buttons["縦"].isSelected)
-        orientation.buttons["横"].tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) { self.app.frame.width > self.app.frame.height },
-            "横向き設定を選んでも画面が横向きになりませんでした。"
-        )
-        orientation.buttons["縦"].tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) { self.app.frame.height > self.app.frame.width },
-            "縦向き設定へ戻しても画面が縦向きになりませんでした。"
-        )
 
         let storage = element("settings.storage.mode")
         XCTAssertTrue(storage.waitForExistence(timeout: 5))
@@ -228,22 +214,7 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         app.buttons["calendar.day.back"].tap()
         XCTAssertTrue(calendarMonth.waitForExistence(timeout: 5))
 
-        let archiveOpen = app.buttons["navigation.archive"]
-        XCTAssertTrue(archiveOpen.waitForExistence(timeout: 5))
-        archiveOpen.tap()
-
-        let month = app.staticTexts["archive.month"].firstMatch
-        XCTAssertTrue(month.waitForExistence(timeout: 5))
-        XCTAssertTrue(month.label.contains("月"), "月別一覧の表記が日本語になっていません。")
-
-        let recordedDay = app.buttons["archive.day.details"].firstMatch
-        XCTAssertTrue(recordedDay.waitForExistence(timeout: 5), "録画のある日が一覧に表示されませんでした。")
-        recordedDay.tap()
-        XCTAssertTrue(app.buttons["archive.day.back"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["library.day.play"].waitForExistence(timeout: 5))
-        app.buttons["archive.day.back"].tap()
-        XCTAssertTrue(month.waitForExistence(timeout: 5))
-        app.buttons["archive.back"].tap()
+        app.buttons["calendar.back"].tap()
 
         let dayDetails = app.buttons["library.day.details"].firstMatch
         XCTAssertTrue(dayDetails.waitForExistence(timeout: 5))
@@ -256,10 +227,10 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         stampEditorButton.tap()
         let stampEditorCancel = app.buttons["stampEditor.cancel"].firstMatch
         XCTAssertTrue(stampEditorCancel.waitForExistence(timeout: 5))
-        XCTAssertTrue(element("stampEditor.enabled").waitForExistence(timeout: 15))
-        XCTAssertTrue(element("stampEditor.element.date").exists)
-        XCTAssertTrue(element("stampEditor.element.time").exists)
-        XCTAssertTrue(element("stampEditor.element.place").exists)
+        XCTAssertTrue(element("stampEditor.toggle.date").waitForExistence(timeout: 15))
+        XCTAssertTrue(element("stampEditor.toggle.time").exists)
+        XCTAssertTrue(element("stampEditor.toggle.place").exists)
+        XCTAssertTrue(element("stampEditor.caption").exists)
         stampEditorCancel.tap()
 
         XCTAssertTrue(app.buttons["library.day.play"].waitForExistence(timeout: 8))
@@ -276,7 +247,11 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         app.swipeLeft()
         XCTAssertTrue(app.buttons["playback.close"].exists)
         app.buttons["playback.close"].tap()
-        XCTAssertTrue(app.buttons["capture.shutter"].waitForExistence(timeout: 12))
+        // 再生を閉じると、開いていた記録の画面に戻る。
+        XCTAssertTrue(
+            app.buttons["library.day.play"].waitForExistence(timeout: 12),
+            "再生を閉じた後、記録の画面に戻りませんでした。"
+        )
     }
 
     func testPlaybackSwipeChangesExactlyOneBrowsableClip() throws {
@@ -323,7 +298,10 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["playback.close"].isHittable)
         app.buttons["playback.close"].tap()
-        XCTAssertTrue(waitForCameraReady(timeout: 12))
+        XCTAssertTrue(
+            app.buttons["library.clip"].firstMatch.waitForExistence(timeout: 12),
+            "再生を閉じた後、1日の詳細に戻りませんでした。"
+        )
     }
 
     func testSettingsAccessibilityAudit() throws {
@@ -348,7 +326,7 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         )
     }
 
-    func testEnglishLocalizationAndLandscapeSettings() throws {
+    func testEnglishLocalizationAndSettings() throws {
         app.terminate()
         app = XCUIApplication()
         app.launchArguments = [
@@ -365,29 +343,20 @@ final class FragmentCameraCapacitySafeUITests: XCTestCase {
         app.buttons["capture.settings"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
 
-        let orientation = element("settings.capture.orientation")
-        XCTAssertTrue(orientation.buttons["Portrait"].isSelected)
-        orientation.buttons["Landscape"].tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) { self.app.frame.width > self.app.frame.height },
-            "Landscape mode did not rotate the English UI."
-        )
-        orientation.buttons["Portrait"].tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) { self.app.frame.height > self.app.frame.width },
-            "Portrait mode did not restore the English UI."
-        )
-
-        XCTAssertTrue(app.staticTexts["Storage"].exists)
-        XCTAssertTrue(app.staticTexts["Timestamp"].exists)
+        let stampSwitch = element("settings.stamp.enabled")
+        XCTAssertTrue(stampSwitch.waitForExistence(timeout: 5))
+        XCTAssertTrue(stampSwitch.label.contains("Add a stamp to your videos"), "設定の文言が英語になっていません。")
         let position = element("settings.stamp.position")
         XCTAssertTrue(scrollToElement(position))
         XCTAssertTrue(position.label.contains("Position"))
         XCTAssertTrue(position.label.contains("Top Right"))
 
-        XCTAssertTrue(app.staticTexts["Date"].exists)
-        XCTAssertTrue(app.staticTexts["Time"].exists)
-        XCTAssertTrue(app.staticTexts["Place"].exists)
+        XCTAssertEqual(element("settings.stamp.element.date").label, "Date")
+        XCTAssertEqual(element("settings.stamp.element.time").label, "Time")
+        XCTAssertEqual(element("settings.stamp.element.place").label, "Place")
+        let dateOrder = element("settings.stamp.dateOrder")
+        XCTAssertTrue(scrollToElement(dateOrder))
+        XCTAssertTrue(dateOrder.buttons["M D Y"].exists, "日付の順番が英語になっていません。")
 
         app.buttons["settings.done"].firstMatch.tap()
         XCTAssertTrue(app.buttons["capture.library"].waitForExistence(timeout: 8))

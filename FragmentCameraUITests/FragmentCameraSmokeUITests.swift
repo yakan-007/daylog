@@ -24,8 +24,8 @@ final class FragmentCameraSmokeUITests: XCTestCase {
         app = nil
     }
 
-    /// 13 Proの背面3レンズと、横向き＋節約モードを合計4秒だけ実撮影する。
-    func testCaptureEachBackLensLandscapeCompactSaveLibraryAndPlayback() throws {
+    /// 13 Proの背面3レンズと、節約モードを合計4秒だけ実撮影する（撮影は縦固定）。
+    func testCaptureEachBackLensCompactSaveLibraryAndPlayback() throws {
         let shutter = app.buttons["capture.shutter"]
         XCTAssertTrue(
             waitUntil(shutter, matches: NSPredicate(format: "exists == true AND enabled == true"), timeout: 25),
@@ -61,13 +61,6 @@ final class FragmentCameraSmokeUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["capture.settings"].waitForExistence(timeout: 8))
         app.buttons["capture.settings"].tap()
-        let orientation = app.descendants(matching: .any)["settings.capture.orientation"]
-        XCTAssertTrue(orientation.waitForExistence(timeout: 5))
-        orientation.buttons["横"].tap()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) { self.app.frame.width > self.app.frame.height },
-            "横向き撮影画面へ切り替わりませんでした。"
-        )
         let storage = app.descendants(matching: .any)["settings.storage.mode"]
         XCTAssertTrue(storage.waitForExistence(timeout: 5))
         storage.buttons["節約"].tap()
@@ -109,8 +102,8 @@ final class FragmentCameraSmokeUITests: XCTestCase {
         playbackClose.tap()
 
         XCTAssertTrue(
-            app.buttons["capture.shutter"].waitForExistence(timeout: 8),
-            "再生画面からカメラへ戻れませんでした。"
+            app.buttons["library.clip"].firstMatch.waitForExistence(timeout: 8),
+            "再生画面から1日の詳細へ戻れませんでした。"
         )
     }
 
