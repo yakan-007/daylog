@@ -142,7 +142,7 @@ final class DateStampLayerFactoryTests: XCTestCase {
         XCTAssertEqual(layers.count, stamps.count)
         for (layer, stamp) in zip(layers, stamps) {
             let animation = try XCTUnwrap(
-                layer.animation(forKey: "daylog-stamp-visibility") as? CAKeyframeAnimation
+                layer.animation(forKey: "vlogish-stamp-visibility") as? CAKeyframeAnimation
             )
             XCTAssertEqual(
                 animation.beginTime,

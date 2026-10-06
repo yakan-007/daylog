@@ -16,22 +16,40 @@ enum AssetPlaybackLoaderError: LocalizedError {
     }
 }
 
+/// PhotoKit から再生用の AVPlayerItem を作る。
+///
+/// AVPlayerItem は Main Actor で作って Main Actor で渡す（Swift 6 の並行性チェックに合わせる）。
+/// 完了は必ず非同期で1回だけ呼ぶ（キャッシュ済みでも、呼び出し側の状態更新より先に走らないように）。
+@MainActor
 final class AssetPlaybackLoader {
-    @MainActor static let shared = AssetPlaybackLoader()
+    static let shared = AssetPlaybackLoader()
     private let cachedPlayerItems = NSCache<NSString, AVPlayerItem>()
     private init() {}
+
+    /// 1回の読み込みの状態。完了とタイムアウトのどちらか先に来た方だけを通す。
+    private final class RequestState {
+        var isFinished = false
+    }
+
+    /// PhotoKit の結果（Sendable でない AVAsset / AVAudioMix）を Main Actor へ渡すための入れ物。
+    /// 受け取った後は Main Actor の中だけで使う。
+    private struct DeliveredAsset: @unchecked Sendable {
+        let asset: AVAsset?
+        let audioMix: AVAudioMix?
+        let error: Error?
+    }
 
     @discardableResult
     func requestPlayerItem(
         for asset: PHAsset,
         deliveryMode: PHVideoRequestOptionsDeliveryMode = .fastFormat,
         timeout: TimeInterval = 20,
-        completion: @escaping (Result<AVPlayerItem, Error>) -> Void
+        completion: @escaping @MainActor (Result<AVPlayerItem, Error>) -> Void
     ) -> PHImageRequestID {
         let cacheKey = asset.localIdentifier as NSString
         if let cachedItem = cachedPlayerItems.object(forKey: cacheKey) {
             cachedPlayerItems.removeObject(forKey: cacheKey)
-            completion(.success(cachedItem))
+            Task { @MainActor in completion(.success(cachedItem)) }
             return PHInvalidImageRequestID
         }
 
@@ -41,37 +59,38 @@ final class AssetPlaybackLoader {
         options.version = .original
 
         let manager = PHImageManager.default()
-        let lock = NSLock()
-        var finished = false
-
-        func finish(_ result: Result<AVPlayerItem, Error>) {
-            let shouldComplete = lock.withLock {
-                guard !finished else { return false }
-                finished = true
-                return true
-            }
-            guard shouldComplete else { return }
+        let state = RequestState()
+        let finish: @MainActor (Result<AVPlayerItem, Error>) -> Void = { result in
+            guard !state.isFinished else { return }
+            state.isFinished = true
             completion(result)
         }
 
         let requestId = manager.requestAVAsset(forVideo: asset, options: options) { avAsset, audioMix, info in
-            if let error = info?[PHImageErrorKey] as? Error {
-                finish(.failure(error))
-                return
+            let delivered = DeliveredAsset(
+                asset: avAsset,
+                audioMix: audioMix,
+                error: info?[PHImageErrorKey] as? Error
+            )
+            Task { @MainActor in
+                if let error = delivered.error {
+                    finish(.failure(error))
+                    return
+                }
+                guard let avAsset = delivered.asset else {
+                    finish(.failure(AssetPlaybackLoaderError.itemUnavailable))
+                    return
+                }
+                let playerItem = AVPlayerItem(asset: avAsset)
+                playerItem.audioMix = delivered.audioMix
+                finish(.success(playerItem))
             }
-            guard let avAsset else {
-                finish(.failure(AssetPlaybackLoaderError.itemUnavailable))
-                return
-            }
-            let playerItem = AVPlayerItem(asset: avAsset)
-            playerItem.audioMix = audioMix
-            finish(.success(playerItem))
         }
 
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeout) {
-            let shouldCancel = lock.withLock { !finished }
-            guard shouldCancel else { return }
-            manager.cancelImageRequest(requestId)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(timeout))
+            guard !state.isFinished else { return }
+            PHImageManager.default().cancelImageRequest(requestId)
             finish(.failure(AssetPlaybackLoaderError.timeout))
         }
 

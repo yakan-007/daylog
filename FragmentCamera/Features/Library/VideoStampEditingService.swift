@@ -115,12 +115,46 @@ final class VideoStampEditingService {
         try await clipEditStore.save(edit, clipDuration: clipDuration)
     }
 
+    /// 編集内容の保存と「共通スタンプを隠す」設定を、ひとまとまりの操作として行う。
+    ///
+    /// 後半（共通スタンプを隠す）が失敗したら、前半の編集内容を元に戻してから失敗を返す。
+    /// 途中まで保存されて、次の再生・書き出しで共通スタンプと編集の文字が二重に出ることを防ぐ。
+    func saveClipEdit(
+        _ edit: VlogClipEdit,
+        clipDuration: TimeInterval,
+        hidingCommonStamp: Bool
+    ) async throws {
+        let identifier = edit.assetLocalIdentifier
+        let previous = try await clipEditStore.edit(for: identifier)
+        try await clipEditStore.save(edit, clipDuration: clipDuration)
+        guard hidingCommonStamp else { return }
+        do {
+            try await apply(
+                assetLocalIdentifier: identifier,
+                visibilityOverride: VideoStampVisibilityOverride(hidesStamp: true, hiddenElements: [])
+            )
+        } catch {
+            do {
+                if let previous {
+                    try await clipEditStore.save(previous, clipDuration: clipDuration)
+                } else {
+                    try await clipEditStore.removeEdit(for: identifier)
+                }
+            } catch let rollbackError {
+                AppLog.storage.error(
+                    "clip_edit.rollback.fail reason=\(rollbackError.localizedDescription, privacy: .private)"
+                )
+            }
+            throw error
+        }
+    }
+
     /// 編集画面専用のプレビュー。通常再生の状態機械とは共有せず、閉じたら必ず破棄する。
     @MainActor
     @discardableResult
     func requestPreviewPlayerItem(
         assetLocalIdentifier: String,
-        completion: @escaping (Result<AVPlayerItem, Error>) -> Void
+        completion: @escaping @MainActor (Result<AVPlayerItem, Error>) -> Void
     ) throws -> PHImageRequestID {
         let asset = try asset(localIdentifier: assetLocalIdentifier)
         return AssetPlaybackLoader.shared.requestPlayerItem(

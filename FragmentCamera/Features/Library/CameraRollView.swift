@@ -9,7 +9,8 @@ struct CameraRollView: View {
     let onExportClip: (String) -> Void
     let onPlayDay: (String) -> Void
     let onExportDay: (String) -> Void
-    let onLoadDay: (String) async -> Void
+    /// その日を読み込む。読めなかった（削除済み・iCloud未取得・限定アクセスなど）時は false。
+    let onLoadDay: (String) async -> Bool
     let onCancelExport: () -> Void
     let onLoadMore: (String) -> Void
     let onRefresh: () async -> Void
@@ -21,12 +22,15 @@ struct CameraRollView: View {
     var onDismissExport: () -> Void = {}
 
     @State private var surface: Surface = .feed
+    /// カレンダーから開いたが読み込めなかった日。スピナーのまま止まらないよう、失敗を表示して再試行できるようにする。
+    @State private var failedDayIDs: Set<String> = []
     @State private var displayedCalendarMonth = CameraRollCalendarPresenter
         .monthStart(containing: .now)
     @State private var hasAlignedCalendarMonth = false
     /// 日付が変わった時に「今日」の扱いを更新するための基準日。
     @State private var today = Date()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum DayOrigin: Equatable {
         case feed
@@ -50,10 +54,10 @@ struct CameraRollView: View {
                 calendar.transition(.opacity)
             case .day(let id, let origin):
                 day(id: id, origin: origin)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: surface)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: surface)
         .onChange(of: surface) { _, newValue in
             // 一覧以外へ進んだら、半分の高さでは狭いので全画面にする。
             if newValue != .feed {
@@ -83,8 +87,8 @@ struct CameraRollView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: state.exportProgress != nil)
-        .animation(.easeInOut(duration: 0.2), value: state.exportCompletion?.id)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.exportProgress != nil)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.exportCompletion?.id)
         .toolbar(.hidden, for: .navigationBar)
         .onReceive(
             NotificationCenter.default
@@ -237,7 +241,7 @@ struct CameraRollView: View {
                 thumbnailProvider: thumbnailProvider,
                 onOpenDay: { id in
                     openDay(id, origin: .calendar)
-                    Task { await onLoadDay(id) }
+                    loadDay(id)
                 }
             )
         }
@@ -300,6 +304,14 @@ struct CameraRollView: View {
                 )
             }
             .background(RollTheme.ground)
+        } else if failedDayIDs.contains(id) {
+            VStack(spacing: 0) {
+                dayLoadingHeader(origin: origin)
+                divider
+                dayLoadFailure(id: id)
+                Spacer()
+            }
+            .background(RollTheme.ground)
         } else {
             VStack(spacing: 0) {
                 dayLoadingHeader(origin: origin)
@@ -308,6 +320,44 @@ struct CameraRollView: View {
                 Spacer()
             }
             .background(RollTheme.ground)
+        }
+    }
+
+    private func dayLoadFailure(id: String) -> some View {
+        VStack(spacing: 14) {
+            Text(L10n.text("この日の動画を読み込めませんでした"))
+                .rollText(15, .bold)
+                .foregroundStyle(RollTheme.ink)
+            Text(L10n.text("動画が削除されたか、iCloudから取得できていない可能性があります。"))
+                .rollText(12)
+                .foregroundStyle(RollTheme.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                loadDay(id)
+            } label: {
+                Label(L10n.text("もう一度"), systemImage: "arrow.clockwise")
+                    .rollText(14, .semibold)
+                    .foregroundStyle(RollTheme.ground)
+                    .padding(.horizontal, 20)
+                    .frame(minHeight: 44)
+                    .background(RollTheme.ink, in: Capsule())
+            }
+            .buttonStyle(SquishableButtonStyle())
+            .accessibilityIdentifier("library.day.retry")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, RollTheme.pagePadding)
+        .padding(.vertical, 56)
+    }
+
+    private func loadDay(_ id: String) {
+        failedDayIDs.remove(id)
+        Task { @MainActor in
+            let loaded = await onLoadDay(id)
+            if !loaded {
+                failedDayIDs.insert(id)
+            }
         }
     }
 

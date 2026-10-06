@@ -287,16 +287,14 @@ final class VideoStampEditorViewModel: ObservableObject {
             let requestID = try service.requestPreviewPlayerItem(
                 assetLocalIdentifier: assetLocalIdentifier
             ) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self, self.previewLoadGeneration == generation else { return }
-                    self.previewRequestID = nil
-                    self.isPreviewLoading = false
-                    switch result {
-                    case .success(let item):
-                        self.preparePreview(item)
-                    case .failure:
-                        self.previewLoadFailed = true
-                    }
+                guard let self, self.previewLoadGeneration == generation else { return }
+                self.previewRequestID = nil
+                self.isPreviewLoading = false
+                switch result {
+                case .success(let item):
+                    self.preparePreview(item)
+                case .failure:
+                    self.previewLoadFailed = true
                 }
             }
             previewRequestID = requestID == PHInvalidImageRequestID ? nil : requestID
@@ -351,15 +349,14 @@ final class VideoStampEditorViewModel: ObservableObject {
         isSaving = true
         defer { isSaving = false }
         do {
-            try await service.saveClipEdit(currentEdit, clipDuration: clipDuration)
             // 保存したクリップでは、日付もこの編集内容で描く。共通スタンプは二重にならないよう隠す。
-            if !hidesCommonStamp {
-                try await service.apply(
-                    assetLocalIdentifier: assetLocalIdentifier,
-                    visibilityOverride: VideoStampVisibilityOverride(hidesStamp: true, hiddenElements: [])
-                )
-                hidesCommonStamp = true
-            }
+            // 2つの保存は、片方だけ成功した状態にならないよう、まとめて行う（失敗したら元に戻る）。
+            try await service.saveClipEdit(
+                currentEdit,
+                clipDuration: clipDuration,
+                hidingCommonStamp: !hidesCommonStamp
+            )
+            hidesCommonStamp = true
             return true
         } catch {
             errorMessage = error.localizedDescription

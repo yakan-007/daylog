@@ -33,6 +33,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     private var refreshInFlight = false
     private var isLoadingMore = false
     private var lastLoadedCursor: String?
+    /// 一覧を作り直すたびに増える。追加読み込みの結果が、作り直した後の一覧に混ざらないようにする。
+    private var libraryGeneration = 0
     private var failedExportTarget: LibraryExportTarget?
     private var exportTask: Task<Void, Never>?
     private var userRequestedExportCancellation = false
@@ -152,11 +154,15 @@ final class LibraryFeatureViewModel: ObservableObject {
 
         isLoadingMore = true
         lastLoadedCursor = cursor
+        let generation = libraryGeneration
 
-        Task {
+        Task { @MainActor in
             let moreSections = await useCase.loadMoreSections(after: cursor)
-            appendSections(moreSections)
             isLoadingMore = false
+            // 読み込み中に更新で一覧が作り直されていたら、古い結果は捨てる
+            // （写真アプリで消した動画や古い集計が戻ってこないように）。
+            guard generation == libraryGeneration else { return }
+            appendSections(moreSections)
         }
     }
 
@@ -240,10 +246,18 @@ final class LibraryFeatureViewModel: ObservableObject {
         ))
     }
 
-    func loadDayIfNeeded(id: String) async {
-        guard section(id: id) == nil,
-              let loaded = await useCase.loadDaySection(dayKey: id) else { return }
+    /// カレンダーから開いた日を読み込む。読めた（または既にある）時は true。
+    @discardableResult
+    func loadDayIfNeeded(id: String) async -> Bool {
+        if section(id: id) != nil { return true }
+        let generation = libraryGeneration
+        guard let loaded = await useCase.loadDaySection(dayKey: id) else {
+            return section(id: id) != nil
+        }
+        // 読み込み中に一覧が作り直されていたら、古い結果は混ぜない（作り直した側に任せる）。
+        guard generation == libraryGeneration else { return section(id: id) != nil }
         appendSections([loaded])
+        return true
     }
 
     func clearPlaybackRoute() {
@@ -581,6 +595,7 @@ final class LibraryFeatureViewModel: ObservableObject {
     }
 
     private func replaceSections(with sections: [DaySection]) {
+        libraryGeneration += 1
         self.sections = sections.sorted(by: { $0.date > $1.date })
         lastLoadedCursor = nil
     }

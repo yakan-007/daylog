@@ -454,34 +454,32 @@ final class LibraryClipBrowserViewModel: ObservableObject {
             deliveryMode: attempt.deliveryMode,
             timeout: attempt.timeout
         ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self,
-                      self.isPlaybackActive,
-                      self.mode == .continuousDay,
-                      self.queuedNextAssetIdentifier == assetIdentifier,
-                      self.canAdvanceClip,
-                      self.currentDay.items[self.currentClipIndex + 1].assetLocalIdentifier == assetIdentifier else {
-                    return
-                }
+            guard let self,
+                  self.isPlaybackActive,
+                  self.mode == .continuousDay,
+                  self.queuedNextAssetIdentifier == assetIdentifier,
+                  self.canAdvanceClip,
+                  self.currentDay.items[self.currentClipIndex + 1].assetLocalIdentifier == assetIdentifier else {
+                return
+            }
 
-                self.queuedNextRequestID = nil
-                switch result {
-                case .success(let playerItem):
-                    playerItem.preferredForwardBufferDuration = 1
-                    self.queuedNextPlayerItem = playerItem
-                    self.insertQueuedNextItemIfPossible()
-                    AppLog.player.info("player.queue.ready asset=\(assetIdentifier, privacy: .private(mask: .hash))")
-                case .failure(let error):
-                    if attempt == .fast {
-                        self.requestContinuousNextItem(
-                            for: asset,
-                            assetIdentifier: assetIdentifier,
-                            attempt: .reliable
-                        )
-                    } else {
-                        self.clearQueuedNextState()
-                        AppLog.player.warning("player.queue.fail asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
-                    }
+            self.queuedNextRequestID = nil
+            switch result {
+            case .success(let playerItem):
+                playerItem.preferredForwardBufferDuration = 1
+                self.queuedNextPlayerItem = playerItem
+                self.insertQueuedNextItemIfPossible()
+                AppLog.player.info("player.queue.ready asset=\(assetIdentifier, privacy: .private(mask: .hash))")
+            case .failure(let error):
+                if attempt == .fast {
+                    self.requestContinuousNextItem(
+                        for: asset,
+                        assetIdentifier: assetIdentifier,
+                        attempt: .reliable
+                    )
+                } else {
+                    self.clearQueuedNextState()
+                    AppLog.player.warning("player.queue.fail asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
                 }
             }
         }
@@ -794,39 +792,37 @@ final class LibraryClipBrowserViewModel: ObservableObject {
             deliveryMode: attempt.deliveryMode,
             timeout: attempt.timeout
         ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self,
-                      self.isPlaybackActive,
-                      self.loadGeneration == generation,
-                      self.loadingAssetIdentifier == assetIdentifier else { return }
+            guard let self,
+                  self.isPlaybackActive,
+                  self.loadGeneration == generation,
+                  self.loadingAssetIdentifier == assetIdentifier else { return }
 
-                self.currentRequestID = nil
-                switch result {
-                case .success(let playerItem):
-                    self.loadingAssetIdentifier = nil
-                    self.preparePlayerItem(
-                        playerItem,
+            self.currentRequestID = nil
+            switch result {
+            case .success(let playerItem):
+                self.loadingAssetIdentifier = nil
+                self.preparePlayerItem(
+                    playerItem,
+                    generation: generation,
+                    assetIdentifier: assetIdentifier
+                )
+            case .failure(let error):
+                if attempt == .fast {
+                    AppLog.player.warning("player.load.retry asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
+                    self.requestPlayerItem(
+                        for: asset,
+                        assetIdentifier: assetIdentifier,
                         generation: generation,
-                        assetIdentifier: assetIdentifier
+                        attempt: .reliable
                     )
-                case .failure(let error):
-                    if attempt == .fast {
-                        AppLog.player.warning("player.load.retry asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
-                        self.requestPlayerItem(
-                            for: asset,
-                            assetIdentifier: assetIdentifier,
-                            generation: generation,
-                            attempt: .reliable
-                        )
-                    } else {
-                        self.loadingAssetIdentifier = nil
-                        self.cancelQueuedNext(removeFromPlayer: true)
-                        self.player.removeAllItems()
-                        self.isLoading = false
-                        self.didFailToLoad = true
-                        self.finishTransitionAfterFailure()
-                        AppLog.player.error("player.load.fail asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
-                    }
+                } else {
+                    self.loadingAssetIdentifier = nil
+                    self.cancelQueuedNext(removeFromPlayer: true)
+                    self.player.removeAllItems()
+                    self.isLoading = false
+                    self.didFailToLoad = true
+                    self.finishTransitionAfterFailure()
+                    AppLog.player.error("player.load.fail asset=\(assetIdentifier, privacy: .private(mask: .hash)) reason=\(error.localizedDescription, privacy: .private)")
                 }
             }
         }
