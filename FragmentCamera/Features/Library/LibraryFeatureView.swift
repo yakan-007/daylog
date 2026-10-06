@@ -2,7 +2,28 @@ import SwiftUI
 
 extension PresentationDetent {
     /// 撮影画面の上に半分だけ重ねる高さ。後ろのカメラが見える。
-    static let libraryPeek = PresentationDetent.fraction(0.47)
+    static let libraryPeek = PresentationDetent.custom(LibraryPeekDetent.self)
+}
+
+/// 半分の高さ。基本は画面の47%だが、小さい iPhone や文字を大きくした時でも
+/// 今日の分（日付・クリップ・時間軸・「通して見る」と共有）が最初から見える高さを確保する。
+struct LibraryPeekDetent: CustomPresentationDetent {
+    /// 標準の文字サイズで、見出しと今日の分が収まる高さ。
+    private static let contentHeight: CGFloat = 392
+
+    static func height(in context: Context) -> CGFloat? {
+        let textScale: CGFloat
+        if context.dynamicTypeSize.isAccessibilitySize {
+            textScale = 1.45
+        } else if context.dynamicTypeSize > .large {
+            textScale = 1.15
+        } else {
+            textScale = 1
+        }
+        let preferred = max(context.maxDetentValue * 0.47, contentHeight * textScale)
+        // カメラが少しは見えるよう、上限は8割にする（それ以上は中をスクロール）。
+        return min(preferred, context.maxDetentValue * 0.8)
+    }
 }
 
 struct VlogishLibrarySheetView: View {

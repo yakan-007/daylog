@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// 撮影画面のトークン。映像の上では黒・白と、差し色1色（「いま」と録画中だけ）に絞る。
+/// 撮影画面のトークン。映像の上では黒・白を基本にし、色は意味ごとに1つだけ使う。
+/// オレンジ（`accent`）は時間軸の「いま」、赤（`recording`）は録画中。
 enum CaptureTheme {
     static let accent = RollTheme.accent
+    static let recording = Color(hex: 0xFF3B30)
     static let ink = RollTheme.ink
     static let selectedFill = Color.white.opacity(0.92)
     static let scrim = Color.black.opacity(0.36)
@@ -157,7 +159,7 @@ private struct CaptureRecordingClockPill: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(CaptureTheme.accent)
+                .fill(CaptureTheme.recording)
                 .frame(width: 8, height: 8)
             Text(text)
                 .rollMono(14, .medium, maxScale: 1.3)
@@ -492,13 +494,13 @@ private struct CaptureShutterButtonContent: View {
             if isRecording {
                 Circle()
                     .trim(from: 0, to: min(max(progress, 0), 1))
-                    .stroke(CaptureTheme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(CaptureTheme.recording, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .frame(width: 102, height: 102)
                     .rotationEffect(.degrees(-90))
             }
 
             RoundedRectangle(cornerRadius: isRecording ? 8 : 35, style: .continuous)
-                .fill(isRecording ? CaptureTheme.accent : Color.white)
+                .fill(isRecording ? CaptureTheme.recording : Color.white)
                 .frame(width: isRecording ? 32 : 70, height: isRecording ? 32 : 70)
         }
         .frame(width: 104, height: 104)

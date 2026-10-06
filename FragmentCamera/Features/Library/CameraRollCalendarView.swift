@@ -10,6 +10,7 @@ struct CameraRollCalendarView: View {
     let onOpenDay: (String) -> Void
 
     private let calendar = Calendar.autoupdatingCurrent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: 4),
         count: 7
@@ -135,7 +136,7 @@ struct CameraRollCalendarView: View {
             from: displayedMonth,
             calendar: calendar
         ) else { return }
-        withAnimation(.snappy(duration: 0.28)) {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
             displayedMonth = start
         }
     }
