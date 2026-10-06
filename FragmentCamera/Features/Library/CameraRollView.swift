@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct CameraRollView: View {
@@ -13,48 +14,69 @@ struct CameraRollView: View {
     let onLoadMore: (String) -> Void
     let onRefresh: () async -> Void
     let onClose: () -> Void
+    /// 半分の高さで開いているシートを全画面に広げてもらう（詳細やカレンダーへ進むとき）。
+    var onExpand: () -> Void = {}
+    /// 完成カードの「共有・保存」と「閉じる」。
+    var onShareExport: () -> Void = {}
+    var onDismissExport: () -> Void = {}
 
     @State private var surface: Surface = .feed
-    @State private var selectedFeedDayID: String?
     @State private var displayedCalendarMonth = CameraRollCalendarPresenter
         .monthStart(containing: .now)
     @State private var hasAlignedCalendarMonth = false
+    /// 日付が変わった時に「今日」の扱いを更新するための基準日。
+    @State private var today = Date()
+    @Environment(\.scenePhase) private var scenePhase
 
     private enum DayOrigin: Equatable {
         case feed
         case calendar
-        case archive
     }
 
     private enum Surface: Equatable {
         case feed
         case calendar
-        case archive
         case day(id: String, origin: DayOrigin)
     }
 
     var body: some View {
         ZStack {
-            DaylogModernBackground()
+            RollTheme.ground.ignoresSafeArea()
 
             switch surface {
             case .feed:
                 feed.transition(.opacity)
             case .calendar:
                 calendar.transition(.opacity)
-            case .archive:
-                archive.transition(.opacity)
             case .day(let id, let origin):
                 day(id: id, origin: origin)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.2), value: surface)
+        .onChange(of: surface) { _, newValue in
+            // 一覧以外へ進んだら、半分の高さでは狭いので全画面にする。
+            if newValue != .feed {
+                onExpand()
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let progress = state.exportProgress {
                 CameraRollExportProgressPanel(
                     progress: progress,
+                    subject: state.exportSubject,
+                    thumbnailProvider: thumbnailProvider,
                     onCancel: onCancelExport
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let completion = state.exportCompletion {
+                CameraRollExportCompletionCard(
+                    completion: completion,
+                    thumbnailProvider: thumbnailProvider,
+                    onShare: onShareExport,
+                    onDismiss: onDismissExport
                 )
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
@@ -62,10 +84,18 @@ struct CameraRollView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: state.exportProgress != nil)
+        .animation(.easeInOut(duration: 0.2), value: state.exportCompletion?.id)
         .toolbar(.hidden, for: .navigationBar)
-        .onChange(of: state.days.first?.id) { _, firstID in
-            if selectedFeedDayID == nil {
-                selectedFeedDayID = firstID
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: .NSCalendarDayChanged)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            today = Date()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                today = Date()
             }
         }
         .onChange(of: state.calendarDays.first?.id, initial: true) { _, firstID in
@@ -80,91 +110,126 @@ struct CameraRollView: View {
                     .monthStart(containing: latestDate)
             }
         }
+        .onChange(of: state.days.map(\.id)) { _, ids in
+            // 開いている日がライブラリから消えたら、元の画面へ戻す。
+            if case .day(let id, let origin) = surface, !ids.contains(id), origin == .feed {
+                surface = .feed
+            }
+        }
     }
 
     private var feed: some View {
-        ScrollViewReader { proxy in
-            VStack(spacing: 0) {
-                feedHeader
+        VStack(spacing: 0) {
+            feedHeader
 
-                if state.days.count > 1 {
-                    CameraRollDayRail(
-                        days: state.days,
-                        selectedDayID: selectedFeedDayID ?? state.days.first?.id,
-                        thumbnailProvider: thumbnailProvider
-                    ) { id in
-                        selectedFeedDayID = id
-                        withAnimation(.snappy(duration: 0.32)) {
-                            proxy.scrollTo(id, anchor: .top)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if state.showsInitialLoading {
+                        CameraRollLoadingView()
+                    } else {
+                        let calendar = Calendar.current
+                        let todayItem = state.days.first.flatMap {
+                            calendar.isDate($0.date, inSameDayAs: today) ? $0 : nil
                         }
-                    }
 
-                    divider
-                }
-
-                ScrollView {
-                    LazyVStack(spacing: 18) {
-                        if state.showsInitialLoading {
-                            CameraRollLoadingView()
-                        } else if state.showsEmptyState {
-                            CameraRollEmptyView(onCapture: onClose)
+                        if let hero = todayItem {
+                            CameraRollHeroDay(
+                                item: hero,
+                                isToday: true,
+                                thumbnailProvider: thumbnailProvider,
+                                onOpen: { openDay(hero.id, origin: .feed) },
+                                onClipTap: onClipTap,
+                                onPlay: { onPlayDay(hero.id) },
+                                onExport: { onExportDay(hero.id) },
+                                onCancelExport: onCancelExport
+                            )
+                            .id(hero.id)
+                            .onAppear { onLoadMore(hero.id) }
                         } else {
-                            ForEach(state.days) { day in
-                                CameraRollDayCard(
-                                    item: day,
-                                    thumbnailProvider: thumbnailProvider,
-                                    onOpen: { openDay(day.id, origin: .feed) },
-                                    onClipTap: onClipTap,
-                                    onPlay: { onPlayDay(day.id) },
-                                    onExport: { onExportDay(day.id) },
-                                    onCancelExport: onCancelExport
-                                )
-                                .id(day.id)
-                                .onAppear {
-                                    onLoadMore(day.id)
-                                }
+                            // 今日まだ撮っていない（またはまだ1本もない）。空白の今日を一番上に置く。
+                            CameraRollTodayEmptyHero(today: today, onCapture: onClose)
+                                .id("today-empty")
+                        }
+
+                        let rest: [CameraRollFeedEntry] = todayItem == nil
+                            ? CameraRollFeedPresenter.entries(for: state.days, leadingFrom: today, calendar: calendar)
+                            : Array(CameraRollFeedPresenter.entries(for: state.days, calendar: calendar).dropFirst())
+
+                        if !rest.isEmpty {
+                            divider
+                                .padding(.horizontal, RollTheme.pagePadding)
+
+                            Text("EARLIER")
+                                .rollMono(10, .semibold)
+                                .tracking(1.2)
+                                .foregroundStyle(RollTheme.secondary)
+                                .padding(.horizontal, RollTheme.pagePadding)
+                                .padding(.top, 16)
+                                .padding(.bottom, 6)
+                                .accessibilityAddTraits(.isHeader)
+
+                            ForEach(rest) { entry in
+                                feedRow(entry)
+                                    .padding(.horizontal, RollTheme.pagePadding)
                             }
                         }
                     }
-                    .padding(.top, state.days.isEmpty ? 0 : 12)
-                    .padding(.bottom, 18)
                 }
-                .scrollIndicators(.hidden)
-                .refreshable {
-                    await onRefresh()
-                }
+                .padding(.bottom, 24)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await onRefresh()
             }
         }
-        .background(DaylogModernTheme.background)
+        .background(RollTheme.ground)
     }
 
+    @ViewBuilder
+    private func feedRow(_ entry: CameraRollFeedEntry) -> some View {
+        switch entry {
+        case .day(let day):
+            CameraRollDayRow(
+                item: day,
+                thumbnailProvider: thumbnailProvider,
+                onOpen: { openDay(day.id, origin: .feed) }
+            )
+            .id(day.id)
+            .onAppear { onLoadMore(day.id) }
+        case .noRecord(_, let label):
+            CameraRollNoRecordRow(label: label)
+        }
+    }
+
+    /// シートは取っ手と下へのスワイプで閉じるので、閉じるボタンは置かない。
+    /// 中央上はシステムの取っ手が重なるため、ロゴは左に寄せる。
     private var feedHeader: some View {
-        surfaceHeader(
-            title: AppIdentity.brandName,
-            leadingSystemName: "xmark",
-            leadingLabel: "閉じる",
-            leadingIdentifier: "library.close",
-            leadingAction: onClose,
-            trailingSystemName: "calendar",
-            trailingLabel: "カレンダーを開く",
-            trailingIdentifier: "navigation.calendar",
-            trailingAction: { surface = .calendar }
-        )
+        HStack(spacing: 0) {
+            Text(AppIdentity.brandName.uppercased())
+                .rollMono(13, .semibold)
+                .tracking(1.0)
+                .foregroundStyle(RollTheme.ink)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            headerButton(
+                systemName: "calendar",
+                label: "カレンダーを開く",
+                identifier: "navigation.calendar",
+                action: { surface = .calendar }
+            )
+        }
+        .padding(.leading, RollTheme.pagePadding)
+        .padding(.trailing, 8)
+        .frame(height: 44)
+        .padding(.top, 8)
+        .background(RollTheme.ground)
+        // VoiceOverの「戻る」ジェスチャー（2本指のZ）でも撮影へ戻れるようにする。
+        .accessibilityAction(.escape, onClose)
     }
 
     private var calendar: some View {
         VStack(spacing: 0) {
-            surfaceHeader(
-                title: L10n.text("カレンダー"),
-                leadingSystemName: "chevron.left",
-                leadingLabel: "記録へ戻る",
-                leadingIdentifier: "calendar.back",
-                leadingAction: { surface = .feed },
-                trailingSystemName: "square.grid.3x3",
-                trailingLabel: "すべての動画",
-                trailingIdentifier: "navigation.archive",
-                trailingAction: { surface = .archive }
-            )
+            calendarHeader
             divider
             CameraRollCalendarView(
                 days: state.calendarDays,
@@ -178,78 +243,44 @@ struct CameraRollView: View {
         }
     }
 
-    private var archive: some View {
-        VStack(spacing: 0) {
-            surfaceHeader(
-                title: L10n.text("すべて"),
-                leadingSystemName: "chevron.left",
-                leadingLabel: "記録へ戻る",
-                leadingIdentifier: "archive.back",
-                leadingAction: { surface = .feed },
-                trailingSystemName: "calendar",
-                trailingLabel: "カレンダーを開く",
-                trailingIdentifier: "navigation.calendar",
-                trailingAction: { surface = .calendar }
-            )
-            divider
-            CameraRollArchiveView(
-                days: state.days,
-                thumbnailProvider: thumbnailProvider,
-                onClipTap: onClipTap,
-                onOpenDay: { openDay($0, origin: .archive) },
-                onLoadMore: onLoadMore,
-                onRefresh: onRefresh,
-                onCapture: onClose
-            )
-        }
-    }
-
-    private func surfaceHeader(
-        title: String,
-        leadingSystemName: String,
-        leadingLabel: String,
-        leadingIdentifier: String,
-        leadingAction: @escaping () -> Void,
-        trailingSystemName: String,
-        trailingLabel: String,
-        trailingIdentifier: String,
-        trailingAction: @escaping () -> Void
-    ) -> some View {
+    private var calendarHeader: some View {
         ZStack {
-            Text(title)
-                .font(.system(size: 17, weight: .bold))
-                .tracking(-0.35)
-                .foregroundStyle(DaylogModernTheme.foreground)
+            Text(L10n.text("カレンダー"))
+                .rollText(15, .bold)
+                .foregroundStyle(RollTheme.ink)
+                .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 0) {
-                Button(action: leadingAction) {
-                    Image(systemName: leadingSystemName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(DaylogModernTheme.foreground)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(SquishableButtonStyle())
-                .accessibilityLabel(L10n.text(leadingLabel))
-                .accessibilityIdentifier(leadingIdentifier)
-
+                headerButton(
+                    systemName: "chevron.left",
+                    label: "記録へ戻る",
+                    identifier: "calendar.back",
+                    action: { surface = .feed }
+                )
                 Spacer()
-
-                Button(action: trailingAction) {
-                    Image(systemName: trailingSystemName)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(DaylogModernTheme.foreground)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(SquishableButtonStyle())
-                .accessibilityLabel(L10n.text(trailingLabel))
-                .accessibilityIdentifier(trailingIdentifier)
             }
         }
         .padding(.horizontal, 8)
         .frame(height: 56)
-        .background(DaylogModernTheme.background)
+        .background(RollTheme.ground)
+    }
+
+    private func headerButton(
+        systemName: String,
+        label: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(RollTheme.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(SquishableButtonStyle())
+        .accessibilityLabel(L10n.text(label))
+        .accessibilityIdentifier(identifier)
     }
 
     @ViewBuilder
@@ -268,7 +299,7 @@ struct CameraRollView: View {
                     onCancelExport: onCancelExport
                 )
             }
-            .background(DaylogModernTheme.background)
+            .background(RollTheme.ground)
         } else {
             VStack(spacing: 0) {
                 dayLoadingHeader(origin: origin)
@@ -276,20 +307,23 @@ struct CameraRollView: View {
                 CameraRollLoadingView()
                 Spacer()
             }
-            .background(DaylogModernTheme.background)
+            .background(RollTheme.ground)
         }
     }
 
     private func dayHeader(item: CameraRollDayItem, origin: DayOrigin) -> some View {
         ZStack {
             VStack(spacing: 2) {
-                Text(item.dateText)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DaylogModernTheme.foreground)
-                Text("\(item.summaryText) · \(item.durationText)")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(DaylogModernTheme.secondary)
+                Text("\(item.stampDateText) \(item.stampWeekdayText)")
+                    .rollMono(15, .semibold)
+                    .foregroundStyle(RollTheme.ink)
+                Text(verbatim: "\(CameraRollStampFormat.clips(item.clipCount)) · \(item.durationText)")
+                    .rollMono(10)
+                    .foregroundStyle(RollTheme.secondary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.text("%@、%@、%@", item.dateText, item.summaryText, item.durationText))
+            .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 0) {
                 dayBackButton(origin: origin)
@@ -305,7 +339,7 @@ struct CameraRollView: View {
                 } label: {
                     Image(systemName: item.isExporting ? "xmark" : "square.and.arrow.up")
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(DaylogModernTheme.foreground)
+                        .foregroundStyle(RollTheme.ink)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -336,13 +370,11 @@ struct CameraRollView: View {
                 surface = .feed
             case .calendar:
                 surface = .calendar
-            case .archive:
-                surface = .archive
             }
         } label: {
             Image(systemName: "chevron.left")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(DaylogModernTheme.foreground)
+                .foregroundStyle(RollTheme.ink)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -353,7 +385,7 @@ struct CameraRollView: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(DaylogModernTheme.divider)
+            .fill(RollTheme.hairline)
             .frame(height: 1)
     }
 
@@ -367,8 +399,6 @@ struct CameraRollView: View {
             return L10n.text("記録へ戻る")
         case .calendar:
             return L10n.text("カレンダーへ戻る")
-        case .archive:
-            return L10n.text("一覧へ戻る")
         }
     }
 
@@ -378,8 +408,6 @@ struct CameraRollView: View {
             return "library.day.back"
         case .calendar:
             return "calendar.day.back"
-        case .archive:
-            return "archive.day.back"
         }
     }
 

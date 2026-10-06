@@ -23,7 +23,7 @@ protocol PlaybackAssetRepository: AnyObject {
 
 /// PhotoKitへのアクセス点。UIで扱うPHAssetと変更通知をMainActorに閉じ込める。
 @MainActor
-final class DaylogPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserver, PlaybackAssetRepository {
+final class VlogishPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserver, PlaybackAssetRepository {
     private let albumName: String
     private let imageManager = PHCachingImageManager()
     private var changeContinuations: [UUID: AsyncStream<LibraryChangeEvent>.Continuation] = [:]
@@ -173,7 +173,7 @@ final class DaylogPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserver
         return ClipSummary(
             assetLocalIdentifier: asset.localIdentifier,
             capturedAt: capturedAt,
-            dayKey: DaylogFormatters.dayKey(for: capturedAt),
+            dayKey: VlogishFormatters.dayKey(for: capturedAt),
             duration: asset.duration
         )
     }
@@ -181,9 +181,9 @@ final class DaylogPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserver
 
 @MainActor
 final class ThumbnailService: LibraryThumbnailProviding {
-    private let repository: DaylogPhotoLibraryRepository
+    private let repository: VlogishPhotoLibraryRepository
 
-    init(repository: DaylogPhotoLibraryRepository) {
+    init(repository: VlogishPhotoLibraryRepository) {
         self.repository = repository
     }
 
@@ -208,14 +208,14 @@ final class ThumbnailService: LibraryThumbnailProviding {
 }
 
 @MainActor
-final class DaylogLibraryUseCase {
+final class VlogishLibraryUseCase {
     private let store: ClipMetadataStore
-    private let repository: DaylogPhotoLibraryRepository
+    private let repository: VlogishPhotoLibraryRepository
     private let pageSize: Int
 
     init(
         store: ClipMetadataStore,
-        repository: DaylogPhotoLibraryRepository,
+        repository: VlogishPhotoLibraryRepository,
         pageSize: Int = 20
     ) {
         self.store = store

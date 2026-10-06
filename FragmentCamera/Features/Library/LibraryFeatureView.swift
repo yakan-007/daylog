@@ -1,7 +1,13 @@
 import SwiftUI
 
-struct DaylogLibrarySheetView: View {
+extension PresentationDetent {
+    /// 撮影画面の上に半分だけ重ねる高さ。後ろのカメラが見える。
+    static let libraryPeek = PresentationDetent.fraction(0.47)
+}
+
+struct VlogishLibrarySheetView: View {
     @ObservedObject var viewModel: LibraryFeatureViewModel
+    var onExpand: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -23,9 +29,12 @@ struct DaylogLibrarySheetView: View {
                 viewModel: viewModel.makeStampEditorViewModel(route: route),
                 onSaved: viewModel.handleStampEditSaved
             )
+            // 動画を主役にした暗い編集画面。再生画面と同じ出し方にそろえる。
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(30)
         }
         .alert(
-            viewModel.exportFailure?.title ?? DaylogFailure.exportFailed.title,
+            viewModel.exportFailure?.title ?? VlogishFailure.exportFailed.title,
             isPresented: exportFailureBinding
         ) {
             Button("もう一度", action: viewModel.retryExport)
@@ -34,7 +43,7 @@ struct DaylogLibrarySheetView: View {
             Text(
                 viewModel.exportFailureDetail
                     ?? viewModel.exportFailure?.message
-                    ?? DaylogFailure.exportFailed.message
+                    ?? VlogishFailure.exportFailed.message
             )
         }
         .alert(item: $viewModel.exportConfirmation) { confirmation in
@@ -48,7 +57,7 @@ struct DaylogLibrarySheetView: View {
             )
         }
         .alert(
-            viewModel.libraryFailure?.title ?? DaylogFailure.libraryAssetUnavailable.title,
+            viewModel.libraryFailure?.title ?? VlogishFailure.libraryAssetUnavailable.title,
             isPresented: libraryFailureBinding
         ) {
             if viewModel.libraryFailure?.requiresSettings == true {
@@ -57,7 +66,7 @@ struct DaylogLibrarySheetView: View {
             Button("再読み込み", action: viewModel.retryLibraryLoad)
             Button("閉じる", role: .cancel) {}
         } message: {
-            Text(viewModel.libraryFailure?.message ?? DaylogFailure.libraryAssetUnavailable.message)
+            Text(viewModel.libraryFailure?.message ?? VlogishFailure.libraryAssetUnavailable.message)
         }
         .alert(
             "一部の写真のみ表示中",
@@ -90,7 +99,10 @@ struct DaylogLibrarySheetView: View {
             onCancelExport: viewModel.cancelExport,
             onLoadMore: viewModel.loadMoreIfNeeded,
             onRefresh: viewModel.refresh,
-            onClose: closeLibrary
+            onClose: closeLibrary,
+            onExpand: onExpand,
+            onShareExport: viewModel.shareCompletedExport,
+            onDismissExport: viewModel.dismissCompletedExport
         )
     }
 

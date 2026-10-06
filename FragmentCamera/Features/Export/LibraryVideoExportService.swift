@@ -59,13 +59,13 @@ final class LibraryVideoExportService {
     private let exporter: DayVideoExporter
     private let stampContextService: VideoStampContextService
     private let clipEditStore: VlogClipEditStore
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
 
     init(
         exporter: DayVideoExporter,
         stampContextService: VideoStampContextService,
         clipEditStore: VlogClipEditStore,
-        settingsStore: DaylogSettingsStore
+        settingsStore: VlogishSettingsStore
     ) {
         self.exporter = exporter
         self.stampContextService = stampContextService

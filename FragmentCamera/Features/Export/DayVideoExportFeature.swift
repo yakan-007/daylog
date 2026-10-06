@@ -71,6 +71,36 @@ enum DayVideoExportPhase: Equatable, Sendable {
     }
 }
 
+/// 利用者に見せる3つの段階。内部の細かい段階（分割処理など）はここにまとめて、作る側の言葉は出さない。
+enum DayVideoExportStage: Int, CaseIterable, Sendable {
+    case preparing
+    case joining
+    case finishing
+
+    var title: String {
+        switch self {
+        case .preparing: return L10n.text("準備")
+        case .joining: return L10n.text("つなぐ")
+        case .finishing: return L10n.text("仕上げ")
+        }
+    }
+}
+
+extension DayVideoExportPhase {
+    var stage: DayVideoExportStage {
+        switch self {
+        case .locatingAssets, .preparing, .resolvingStamps:
+            return .preparing
+        case .exportingClip, .merging, .processingChunk, .combiningChunks:
+            return .joining
+        case .finalizing, .completed:
+            return .finishing
+        case .cancelling:
+            return .joining
+        }
+    }
+}
+
 struct DayVideoExportProgress: Equatable, Sendable {
     let fraction: Double
     let phase: DayVideoExportPhase

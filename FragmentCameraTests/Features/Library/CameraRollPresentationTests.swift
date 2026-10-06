@@ -262,7 +262,7 @@ final class CameraRollPresentationTests: XCTestCase {
         XCTAssertTrue(progress.phase.detail.contains("地名"))
     }
 
-    func testArchiveHeaderUsesJapaneseYearMonth() throws {
+    func testYearMonthFormattersUseJapanese() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         let date = try XCTUnwrap(calendar.date(from: DateComponents(
@@ -271,8 +271,8 @@ final class CameraRollPresentationTests: XCTestCase {
             day: 1
         )))
 
-        XCTAssertEqual(DaylogFormatters.monthTitleFormatter.string(from: date), "8月")
-        XCTAssertEqual(DaylogFormatters.yearTitleFormatter.string(from: date), "2026年")
-        XCTAssertEqual(DaylogFormatters.yearMonthTitleFormatter.string(from: date), "2026年8月")
+        XCTAssertEqual(VlogishFormatters.monthTitleFormatter.string(from: date), "8月")
+        XCTAssertEqual(VlogishFormatters.yearTitleFormatter.string(from: date), "2026年")
+        XCTAssertEqual(VlogishFormatters.yearMonthTitleFormatter.string(from: date), "2026年8月")
     }
 }

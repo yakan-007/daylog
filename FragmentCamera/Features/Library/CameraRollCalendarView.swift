@@ -1,123 +1,104 @@
 import SwiftUI
 
+/// 月のカレンダー。各日のマスに 0時→24時 の縦帯を置き、撮った時刻に線を引く。
+/// 数字の集計や凡例は置かず、帯だけで見せる。今日のマスには「いま」の点を出す。
 struct CameraRollCalendarView: View {
     let days: [CameraRollCalendarDayItem]
     @Binding var displayedMonth: Date
+    /// 以前のサムネイル表示との互換のために受け取る（現在の表示では使わない）。
     let thumbnailProvider: LibraryThumbnailProviding
     let onOpenDay: (String) -> Void
 
     private let calendar = Calendar.autoupdatingCurrent
     private let columns = Array(
-        repeating: GridItem(.flexible(), spacing: 5),
+        repeating: GridItem(.flexible(), spacing: 4),
         count: 7
     )
 
     var body: some View {
+        let month = calendarMonth
         ScrollView {
-            VStack(spacing: 0) {
-                monthNavigation
-                weekdayHeader
+            VStack(alignment: .leading, spacing: 22) {
+                monthHeader
 
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Array(calendarMonth.cells.enumerated()), id: \.offset) { _, date in
-                        if let date {
-                            let item = calendarMonth.recordedDay(on: date, calendar: calendar)
-                            CameraRollCalendarDayCell(
-                                date: date,
-                                item: item,
-                                isToday: calendar.isDateInToday(date),
-                                thumbnailProvider: thumbnailProvider,
-                                onTap: { item.map { onOpenDay($0.id) } }
-                            )
-                            .id(date)
-                        } else {
-                            Color.clear
-                                .aspectRatio(0.78, contentMode: .fit)
-                        }
+                VStack(spacing: 8) {
+                    weekdayHeader
+                    // 分単位で「今日」と「いま」の位置を更新する（日付をまたいでも正しく出す）。
+                    TimelineView(.everyMinute) { context in
+                        grid(for: month, now: context.date)
                     }
                 }
-                .padding(.horizontal, 12)
-
-                monthSummary
-                    .padding(.top, 22)
+                .accessibilityIdentifier("calendar.grid")
             }
-            .padding(.bottom, 28)
+            .padding(.horizontal, RollTheme.pagePadding)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
-        .background(DaylogModernTheme.background)
+        .background(RollTheme.ground)
         .contentShape(Rectangle())
-        .gesture(monthSwipeGesture)
-        .accessibilityIdentifier("calendar.grid")
+        .simultaneousGesture(monthSwipeGesture)
     }
 
-    private var monthNavigation: some View {
-        ZStack {
-            Text(DaylogFormatters.yearMonthTitleFormatter.string(from: displayedMonth))
-                .font(.system(size: 22, weight: .bold))
-                .tracking(-0.65)
-                .foregroundStyle(DaylogModernTheme.foreground)
+    private var monthHeader: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            Text(CameraRollStampFormat.month.string(from: displayedMonth))
+                .rollMono(56, .medium, maxScale: 1.2)
+                .tracking(-2)
+                .foregroundStyle(RollTheme.ink)
+                .accessibilityLabel(VlogishFormatters.yearMonthTitleFormatter.string(from: displayedMonth))
                 .accessibilityIdentifier("calendar.month")
 
-            HStack {
-                monthButton(
-                    systemName: "chevron.left",
-                    label: "前の月",
-                    identifier: "calendar.previous",
-                    offset: -1
-                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(CameraRollStampFormat.year.string(from: displayedMonth))
+                    .rollMono(11)
+                    .foregroundStyle(RollTheme.secondary)
+                Text(CameraRollStampFormat.monthName.string(from: displayedMonth).uppercased())
+                    .rollMono(11, .semibold)
+                    .tracking(0.9)
+                    .foregroundStyle(RollTheme.ink)
+            }
+            .padding(.bottom, 8)
 
-                Spacer()
+            Spacer(minLength: 0)
 
-                monthButton(
-                    systemName: "chevron.right",
-                    label: "次の月",
-                    identifier: "calendar.next",
-                    offset: 1
-                )
+            monthButton(systemName: "chevron.left", label: "前の月", identifier: "calendar.previous", offset: -1)
+            monthButton(systemName: "chevron.right", label: "次の月", identifier: "calendar.next", offset: 1)
+        }
+    }
+
+    private func grid(for month: CameraRollCalendarMonth, now: Date) -> some View {
+        let startOfToday = calendar.startOfDay(for: now)
+        return LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(Array(month.cells.enumerated()), id: \.offset) { _, date in
+                if let date {
+                    let item = month.recordedDay(on: date, calendar: calendar)
+                    let isToday = calendar.isDate(date, inSameDayAs: now)
+                    CameraRollCalendarDayCell(
+                        date: date,
+                        item: item,
+                        isToday: isToday,
+                        isFuture: !isToday && date > startOfToday,
+                        nowFraction: isToday ? CameraRollTimeAxis.fraction(of: now, calendar: calendar) : nil,
+                        onTap: { item.map { onOpenDay($0.id) } }
+                    )
+                } else {
+                    Color.clear.frame(height: CameraRollCalendarDayCell.height)
+                }
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 68)
     }
 
     private var weekdayHeader: some View {
         LazyVGrid(columns: columns, spacing: 0) {
-            ForEach(Array(DaylogFormatters.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
+            ForEach(Array(VlogishFormatters.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol.uppercased())
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(DaylogModernTheme.secondary)
+                    .rollMono(10)
+                    .foregroundStyle(RollTheme.secondary)
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 9)
-    }
-
-    private var monthSummary: some View {
-        return HStack(spacing: 14) {
-            Label(
-                calendarMonth.recordedDayCount == 1
-                    ? L10n.text("1日")
-                    : L10n.text("%d日", calendarMonth.recordedDayCount),
-                systemImage: "calendar"
-            )
-            Label(
-                calendarMonth.clipCount == 1
-                    ? L10n.text("1本")
-                    : L10n.text("%d本", calendarMonth.clipCount),
-                systemImage: "video"
-            )
-            if calendarMonth.totalDuration > 0 {
-                Label(
-                    DaylogFormatters.durationLabel(calendarMonth.totalDuration),
-                    systemImage: "clock"
-                )
-            }
-        }
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
-        .foregroundStyle(DaylogModernTheme.secondary)
-        .frame(maxWidth: .infinity)
-        .accessibilityIdentifier("calendar.summary")
+        .accessibilityHidden(true)
     }
 
     private func monthButton(
@@ -130,8 +111,8 @@ struct CameraRollCalendarView: View {
             changeMonth(by: offset)
         } label: {
             Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DaylogModernTheme.foreground)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RollTheme.ink)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -162,79 +143,76 @@ struct CameraRollCalendarView: View {
     private var monthSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 24)
             .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height),
-                      abs(value.translation.width) > 48 else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.5,
+                      abs(value.translation.width) > 56 else { return }
                 changeMonth(by: value.translation.width < 0 ? 1 : -1)
             }
     }
-
 }
 
 private struct CameraRollCalendarDayCell: View {
+    static let height: CGFloat = 76
+    private static let barHeight: CGFloat = 52
+
     let date: Date
     let item: CameraRollCalendarDayItem?
     let isToday: Bool
-    let thumbnailProvider: LibraryThumbnailProviding
+    let isFuture: Bool
+    /// 今日のマスだけ値が入る。0〜1。
+    let nowFraction: Double?
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(item == nil ? Color.clear : DaylogModernTheme.mediaPlaceholder)
-                    .overlay {
-                        if let item {
-                            LibraryThumbnailView(
-                                assetIdentifier: item.previewAssetIdentifier,
-                                thumbnailProvider: thumbnailProvider,
-                                targetSize: CGSize(width: 92, height: 118)
-                            ) {
-                                Color.clear
-                            }
-                        }
-                    }
-                    .overlay {
-                        if item != nil {
-                            LinearGradient(
-                                colors: [.black.opacity(0.42), .clear, .black.opacity(0.56)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-
+            VStack(alignment: .leading, spacing: 4) {
                 Text(String(Calendar.autoupdatingCurrent.component(.day, from: date)))
-                    .font(.system(size: 12, weight: item == nil ? .medium : .bold, design: .rounded))
-                    .foregroundStyle((item != nil || isToday) ? .white : DaylogModernTheme.foreground)
-                    .frame(width: 25, height: 25)
-                    .background {
-                        if isToday {
-                            Circle().fill(DaylogModernTheme.accent)
-                        }
-                    }
-                    .padding(3)
+                    .rollMono(11, isEmphasized ? .semibold : .regular)
+                    .foregroundStyle(numberColor)
+                    .padding(.leading, 2)
 
-                if let item {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Text("\(item.clipCount)")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
-                                .padding(5)
-                        }
-                    }
-                }
+                bar
             }
+            .frame(minHeight: Self.height, alignment: .top)
+            .contentShape(Rectangle())
         }
         .buttonStyle(SquishableButtonStyle())
         .disabled(item == nil)
-        .aspectRatio(0.78, contentMode: .fit)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(item == nil ? "" : L10n.text("この日の動画を開きます"))
         .accessibilityIdentifier(item == nil ? "calendar.day.empty" : "calendar.day.recorded")
+    }
+
+    private var isEmphasized: Bool {
+        item != nil || isToday
+    }
+
+    private var numberColor: Color {
+        if isEmphasized { return RollTheme.ink }
+        return isFuture ? RollTheme.dashed : RollTheme.secondary
+    }
+
+    /// 撮った日は帯と線、今日は枠と「いま」の点。撮っていない日は何も描かない。
+    private var bar: some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        return Canvas { context, size in
+            if let item {
+                for fraction in item.clipFractions {
+                    let y = min(max(size.height * CGFloat(fraction) - 1, 0), size.height - 2)
+                    let rect = CGRect(x: 6, y: y, width: max(size.width - 12, 1), height: 2)
+                    context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(RollTheme.ink))
+                }
+            }
+            if let nowFraction {
+                let y = min(max(size.height * CGFloat(nowFraction), 3.5), size.height - 3.5)
+                let dot = CGRect(x: size.width / 2 - 3.5, y: y - 3.5, width: 7, height: 7)
+                context.fill(Path(ellipseIn: dot), with: .color(RollTheme.accent))
+            }
+        }
+        .frame(height: Self.barHeight)
+        .background(item == nil ? Color.clear : RollTheme.fill, in: shape)
+        .overlay {
+            if isToday { shape.strokeBorder(RollTheme.ink, lineWidth: 1.5) }
+        }
     }
 
     private var accessibilityLabel: String {

@@ -1,7 +1,10 @@
 import SwiftUI
 
-struct CameraRollDayCard: View {
+/// フィード最上段。いちばん新しい日を大きく、時間軸つきで見せる。
+struct CameraRollHeroDay: View {
     let item: CameraRollDayItem
+    /// 日付をまたいでも正しく出せるよう、呼び出し側が「今日か」を決める。
+    let isToday: Bool
     let thumbnailProvider: LibraryThumbnailProviding
     let onOpen: () -> Void
     let onClipTap: (String) -> Void
@@ -9,236 +12,351 @@ struct CameraRollDayCard: View {
     let onExport: () -> Void
     let onCancelExport: () -> Void
 
+    /// 半分の高さのシートに今日の分が収まる大きさ。
+    private let frameSize = CGSize(width: 60, height: 106)
+    @ScaledMetric(relativeTo: .caption2) private var timeLabelHeight: CGFloat = 16
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
             header
+                .padding(.horizontal, RollTheme.pagePadding)
 
             if let text = item.exportAssessment.indicatorText {
-                exportLoadIndicator(text)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+                Label(text, systemImage: "exclamationmark.triangle")
+                    .rollText(11, .medium)
+                    .foregroundStyle(item.exportAssessment.load == .heavy ? VlogishModernTheme.danger : RollTheme.secondary)
+                    .padding(.horizontal, RollTheme.pagePadding)
+                    .accessibilityLabel(L10n.text("結合時に注意が必要です。%@", text))
             }
 
-            CameraRollDayHero(
-                item: item,
-                thumbnailProvider: thumbnailProvider,
-                onPlay: onPlay
-            )
+            strip
 
-            if item.clips.count > 1 {
-                clipStrip
-            }
-        }
-        .background(DaylogModernTheme.elevated)
-        .clipShape(RoundedRectangle(cornerRadius: DaylogModernTheme.mediaRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: DaylogModernTheme.mediaRadius, style: .continuous)
-                .stroke(DaylogModernTheme.divider, lineWidth: 1)
-        }
-        .padding(.horizontal, 10)
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
             Button(action: onOpen) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 7) {
-                        Text(item.dateText)
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(item.weekdayText)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(DaylogModernTheme.secondary)
-                    }
-
-                    Text("\(item.summaryText) · \(item.durationText)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(DaylogModernTheme.secondary)
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    CameraRollTimeRuler(
+                        fractions: item.clips.map(\.dayFraction),
+                        nowFraction: Calendar.current.isDate(item.date, inSameDayAs: context.date)
+                            ? CameraRollTimeAxis.fraction(of: context.date)
+                            : nil,
+                        showsLabels: true
+                    )
                 }
-                .foregroundStyle(DaylogModernTheme.foreground)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("%@、%@、%@", item.dateText, item.summaryText, item.durationText))
-            .accessibilityHint("この日の動画一覧を開きます")
-            .accessibilityIdentifier("library.day.details")
+            .accessibilityHidden(true)
+            .padding(.horizontal, RollTheme.pagePadding)
 
-            Spacer()
-
-            if item.isExporting {
-                Button(action: onCancelExport) {
-                    ZStack {
-                        Circle().stroke(DaylogModernTheme.divider, lineWidth: 2)
-                        Circle()
-                            .trim(from: 0, to: item.exportProgress ?? 0)
-                            .stroke(DaylogModernTheme.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .frame(width: 27, height: 27)
-                    .frame(width: 44, height: 44)
-                }
-                .buttonStyle(SquishableButtonStyle())
-                .accessibilityLabel("結合をキャンセル")
-                .accessibilityIdentifier("library.day.export")
-            } else {
-                Button(action: onExport) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(DaylogModernTheme.foreground)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(SquishableButtonStyle())
-                .disabled(!item.canExport)
-                .opacity(item.canExport ? 1 : 0.28)
-                .accessibilityLabel("1本に結合して共有")
-                .accessibilityIdentifier("library.day.export")
-            }
+            actions
+                .padding(.horizontal, RollTheme.pagePadding)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.top, 4)
+        .padding(.bottom, 22)
     }
 
-    private var clipStrip: some View {
+    /// 日付の行全体が「この日を開く」ボタン。右端の矢印で行き先を示す。
+    private var header: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .bottom, spacing: 10) {
+                Text(item.stampDateText)
+                    .rollMono(40, .medium, maxScale: 1.25)
+                    .tracking(-2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.stampWeekdayText)
+                        .rollMono(11, .semibold)
+                        .tracking(0.9)
+                    Text(isToday ? L10n.text("今日") : item.dateText)
+                        .rollText(12)
+                        .foregroundStyle(RollTheme.secondary)
+                }
+                .padding(.bottom, 4)
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(verbatim: CameraRollStampFormat.clips(item.clipCount))
+                    Text(item.durationText)
+                }
+                .rollMono(12)
+                .foregroundStyle(RollTheme.secondary)
+                .padding(.bottom, 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RollTheme.ink)
+                    .frame(width: 32, height: 32)
+                    .background(RollTheme.fill, in: Circle())
+                    .padding(.bottom, 2)
+            }
+            .foregroundStyle(RollTheme.ink)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SquishableButtonStyle())
+        .accessibilityLabel(L10n.text("%@、%@、%@", item.dateText, item.summaryText, item.durationText))
+        .accessibilityHint(L10n.text("この日の動画一覧を開きます"))
+        .accessibilityIdentifier("library.day.details")
+    }
+
+    private var strip: some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 9) {
-                ForEach(Array(item.clips.prefix(3))) { clip in
+            LazyHStack(alignment: .top, spacing: 4) {
+                ForEach(item.clips) { clip in
                     Button {
                         onClipTap(clip.id)
                     } label: {
-                        VStack(spacing: 5) {
-                            CameraRollHeroThumbnail(
-                                item: clip,
-                                thumbnailProvider: thumbnailProvider,
-                                targetSize: CGSize(width: 64, height: 64)
+                        VStack(alignment: .leading, spacing: 6) {
+                            CameraRollFrame(
+                                assetIdentifier: clip.id,
+                                size: frameSize,
+                                cornerRadius: 8,
+                                thumbnailProvider: thumbnailProvider
                             )
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
                             Text(clip.timeText)
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                                .foregroundStyle(DaylogModernTheme.secondary)
+                                .rollMono(10)
+                                .foregroundStyle(RollTheme.secondary)
                         }
                     }
                     .buttonStyle(SquishableButtonStyle())
                     .accessibilityLabel(L10n.text("%@の動画を再生", clip.timeText))
                     .accessibilityIdentifier("library.clip.preview")
                 }
-
-                if remainingClipCount > 0 {
-                    Button(action: onOpen) {
-                        VStack(spacing: 5) {
-                            Text("+\(remainingClipCount)")
-                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(DaylogModernTheme.foreground)
-                                .frame(width: 64, height: 64)
-                                .background(DaylogModernTheme.mediaPlaceholder)
-                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
-                            Text(L10n.text("すべて"))
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(DaylogModernTheme.secondary)
-                        }
-                    }
-                    .buttonStyle(SquishableButtonStyle())
-                    .accessibilityLabel(L10n.text("残り%d本を表示", remainingClipCount))
-                    .accessibilityIdentifier("library.day.more")
-                }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, RollTheme.pagePadding)
         }
         .scrollIndicators(.hidden)
-        .frame(height: 87)
-        .padding(.top, 11)
-        .padding(.bottom, 12)
+        .frame(height: frameSize.height + 6 + timeLabelHeight)
     }
 
-    private var remainingClipCount: Int {
-        max(item.clips.count - 3, 0)
-    }
+    private var actions: some View {
+        HStack(spacing: 10) {
+            Button(action: onPlay) {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(isToday ? L10n.text("今日を通して見る") : L10n.text("通して見る"))
+                        .rollText(14, .semibold)
+                }
+                .foregroundStyle(RollTheme.ground)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 46)
+                .background(RollTheme.ink, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(SquishableButtonStyle())
+            .accessibilityLabel(L10n.text("%@を続けて再生", item.dateText))
+            .accessibilityIdentifier("library.day.play")
 
-    private func exportLoadIndicator(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(item.exportAssessment.load == .heavy
-                             ? DaylogModernTheme.danger
-                             : DaylogModernTheme.secondary)
-            .accessibilityLabel(L10n.text("結合時に注意が必要です。%@", text))
+            CameraRollExportButton(
+                isExporting: item.isExporting,
+                progress: item.exportProgress,
+                isEnabled: item.canExport,
+                onExport: onExport,
+                onCancel: onCancelExport
+            )
+        }
     }
 }
 
-private struct CameraRollDayHero: View {
+/// フィード2段目以降。日付・小さなコマ・時間軸を1行で。
+struct CameraRollDayRow: View {
     let item: CameraRollDayItem
     let thumbnailProvider: LibraryThumbnailProviding
-    let onPlay: () -> Void
+    let onOpen: () -> Void
+
+    private let frameSize = CGSize(width: 30, height: 53)
+    private let maxFrames = 7
 
     var body: some View {
-        Button(action: onPlay) {
-            GeometryReader { proxy in
-                if let first = item.clips.first {
-                    CameraRollHeroThumbnail(
-                        item: first,
-                        thumbnailProvider: thumbnailProvider,
-                        targetSize: proxy.size
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.stampDateText)
+                        .rollMono(18, .medium)
+                        .tracking(-0.4)
+                        .foregroundStyle(RollTheme.ink)
+                    Text("\(item.stampWeekdayText) · \(item.durationText)")
+                        .rollMono(10)
+                        .foregroundStyle(RollTheme.secondary)
+                        .lineLimit(1)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(width: 70, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 3) {
+                        ForEach(item.clips.prefix(maxFrames)) { clip in
+                            CameraRollFrame(
+                                assetIdentifier: clip.id,
+                                size: frameSize,
+                                cornerRadius: 4,
+                                thumbnailProvider: thumbnailProvider
+                            )
+                        }
+                        if item.clips.count > maxFrames {
+                            Text("+\(item.clips.count - maxFrames)")
+                                .rollMono(10, .medium)
+                                .foregroundStyle(RollTheme.secondary)
+                                .frame(height: frameSize.height)
+                                .padding(.leading, 3)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
+
+                    CameraRollTimeRuler(
+                        fractions: item.clips.map(\.dayFraction),
+                        nowFraction: nil,
+                        tickHeight: 7,
+                        tickWidth: 1
                     )
-                    .id(first.id)
-                } else {
-                    DaylogModernTheme.mediaPlaceholder
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(RollTheme.secondary)
+                    .frame(width: 12, height: frameSize.height)
             }
-            .overlay {
-                ZStack {
-                    Circle().fill(.black.opacity(0.38))
-                    Circle().stroke(.white.opacity(0.48), lineWidth: 1)
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .offset(x: 1)
-                }
-                .frame(width: 58, height: 58)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if let first = item.clips.first {
-                    Text(first.timeText)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
-                        .background(.black.opacity(0.38), in: Capsule())
-                        .padding(12)
-                }
-            }
-            .clipped()
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .aspectRatio(1.22, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.horizontal, 12)
-        .accessibilityLabel(L10n.text("%@を続けて再生", item.dateText))
-        .accessibilityValue(L10n.text("%@、%@", item.summaryText, item.durationText))
-        .accessibilityIdentifier("library.day.play")
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(RollTheme.rowLine).frame(height: 1)
+        }
+        .accessibilityLabel(L10n.text("%@、%@、%@", item.dateText, item.summaryText, item.durationText))
+        .accessibilityHint(L10n.text("この日の動画一覧を開きます"))
+        .accessibilityIdentifier("library.day.details")
     }
 }
 
-private struct CameraRollHeroThumbnail: View {
-    let item: CameraRollClipItem
-    let thumbnailProvider: LibraryThumbnailProviding
-    let targetSize: CGSize
+/// 記録が無かった日の行。空白も一日の一部として隠さない。
+struct CameraRollNoRecordRow: View {
+    let label: String
 
     var body: some View {
-        LibraryThumbnailView(
-            assetIdentifier: item.id,
-            thumbnailProvider: thumbnailProvider,
-            targetSize: CGSize(
-                width: max(targetSize.width, 160),
-                height: max(targetSize.height, 200)
-            )
-        ) {
-            DaylogModernTheme.mediaPlaceholder
-                .overlay {
-                    ProgressView().tint(DaylogModernTheme.accent)
-                }
+        HStack(spacing: 12) {
+            Text(label)
+                .rollMono(12)
+                .foregroundStyle(RollTheme.secondary)
+                .lineLimit(1)
+                .fixedSize()
+            CameraRollDashedLine()
+            Text("記録なし")
+                .rollText(11)
+                .foregroundStyle(RollTheme.secondary)
         }
+        .frame(minHeight: 40)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(RollTheme.rowLine).frame(height: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 今日まだ撮っていない時の最上段。空の時間軸と「いま」を見せて、撮影へ戻す。
+struct CameraRollTodayEmptyHero: View {
+    let today: Date
+    let onCapture: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .bottom, spacing: 10) {
+                Text(CameraRollStampFormat.date.string(from: today))
+                    .rollMono(40, .medium, maxScale: 1.25)
+                    .tracking(-2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(CameraRollStampFormat.weekday.string(from: today).uppercased())
+                        .rollMono(11, .semibold)
+                        .tracking(0.9)
+                    Text(L10n.text("今日"))
+                        .rollText(12)
+                        .foregroundStyle(RollTheme.secondary)
+                }
+                .padding(.bottom, 4)
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(verbatim: CameraRollStampFormat.clips(0))
+                    Text(VlogishFormatters.durationLabel(0))
+                }
+                .rollMono(12)
+                .foregroundStyle(RollTheme.secondary)
+                .padding(.bottom, 4)
+                .accessibilityHidden(true)
+            }
+            .foregroundStyle(RollTheme.ink)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.text("今日、まだ動画はありません"))
+
+            // クリップが並ぶ場所に、1本目の枠を置く。撮ったらここに並ぶことを場所で伝える。
+            HStack(alignment: .center, spacing: 14) {
+                Button(action: onCapture) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .medium))
+                        Text(verbatim: "1ST")
+                            .rollMono(9, .semibold, maxScale: 1.2)
+                            .tracking(0.6)
+                    }
+                    .foregroundStyle(RollTheme.secondary)
+                    .frame(width: 60, height: 106)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(RollTheme.dashed, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(SquishableButtonStyle())
+                .accessibilityLabel(L10n.text("カメラに戻って撮る"))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.text("今日の1本目は、まだ。"))
+                        .rollText(15, .bold)
+                        .foregroundStyle(RollTheme.ink)
+                    Text(L10n.text("撮った動画は、ここに時刻順で並びます。"))
+                        .rollText(12)
+                        .foregroundStyle(RollTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                CameraRollTimeRuler(
+                    fractions: [],
+                    nowFraction: CameraRollTimeAxis.fraction(of: context.date),
+                    showsLabels: true
+                )
+            }
+
+            Button(action: onCapture) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(L10n.text("カメラに戻って撮る"))
+                        .rollText(14, .semibold)
+                }
+                .foregroundStyle(RollTheme.ground)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 46)
+                .background(RollTheme.ink, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(SquishableButtonStyle())
+            .accessibilityIdentifier("library.empty.capture")
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, RollTheme.pagePadding)
+        .padding(.top, 4)
+        .padding(.bottom, 24)
     }
 }

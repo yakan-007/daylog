@@ -14,15 +14,17 @@ final class LibraryFeatureViewModel: ObservableObject {
     @Published private var activeExportTarget: LibraryExportTarget?
     @Published private var exportProgress: DayVideoExportProgress?
     @Published var exportShareItem: ExportShareItem?
-    @Published var exportFailure: DaylogFailure?
+    /// 書き出しが終わり、完成カードで共有を待っている動画。
+    @Published private(set) var exportCompletion: CameraRollExportCompletion?
+    @Published var exportFailure: VlogishFailure?
     @Published private(set) var exportFailureDetail: String?
     @Published var exportConfirmation: DayVideoExportConfirmation?
-    @Published var libraryFailure: DaylogFailure?
+    @Published var libraryFailure: VlogishFailure?
     @Published var isLimitedLibraryNoticePresented = false
     @Published var stampEditorRoute: VideoStampEditorRoute?
 
-    private let useCase: DaylogLibraryUseCase
-    private let repository: DaylogPhotoLibraryRepository
+    private let useCase: VlogishLibraryUseCase
+    private let repository: VlogishPhotoLibraryRepository
     private let thumbnailService: ThumbnailService
     private let exportService: LibraryVideoExportService
     private let stampEditingService: VideoStampEditingService
@@ -37,8 +39,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     private var hasShownLimitedLibraryNotice = false
 
     init(
-        useCase: DaylogLibraryUseCase,
-        repository: DaylogPhotoLibraryRepository,
+        useCase: VlogishLibraryUseCase,
+        repository: VlogishPhotoLibraryRepository,
         thumbnailService: ThumbnailService,
         exportService: LibraryVideoExportService,
         stampEditingService: VideoStampEditingService
@@ -56,7 +58,7 @@ final class LibraryFeatureViewModel: ObservableObject {
     }
 
     var screenState: CameraRollScreenState {
-        CameraRollPresenter.makeState(
+        var state = CameraRollPresenter.makeState(
             sections: sections,
             calendarSummaries: calendarSummaries,
             isRefreshing: isRefreshing,
@@ -64,6 +66,9 @@ final class LibraryFeatureViewModel: ObservableObject {
             exportingClipID: activeExportTarget?.exportingClipID,
             exportProgress: exportProgress
         )
+        state.exportSubject = activeExportTarget.flatMap(exportSubject(for:))
+        state.exportCompletion = exportCompletion
+        return state
     }
 
     var thumbnailProvider: LibraryThumbnailProviding {
@@ -135,7 +140,7 @@ final class LibraryFeatureViewModel: ObservableObject {
                 "library.refresh.fail reason=\(error.localizedDescription, privacy: .private)"
             )
             if reportsFailure || shouldReportSilentRefreshFailure(error) {
-                libraryFailure = DaylogFailureMapper.libraryFailure(from: error)
+                libraryFailure = VlogishFailureMapper.libraryFailure(from: error)
             }
         }
     }
@@ -187,15 +192,20 @@ final class LibraryFeatureViewModel: ObservableObject {
         }
     }
 
-    var clipCountToday: Int {
-        sections.first(where: { Calendar.current.isDateInToday($0.date) })?.clipCount ?? 0
+    /// 撮影画面のミニ時間軸用。最新の日の撮影時刻を渡し、「今日」かどうかは描画側で判定する
+    /// （日付をまたいだ直後に、前日の記録を今日として描かないため）。
+    var todayTimeline: CaptureTodayTimeline {
+        guard let latest = sections.max(by: { $0.date < $1.date }) else {
+            return CaptureTodayTimeline()
+        }
+        return CaptureTodayTimeline(clipDates: latest.clips.map(\.capturedAt))
     }
 
     func playClip(id: String) {
         guard !hasActiveExport else { return }
         guard let context = makeLibraryClipPlaybackContext(selectedClipId: id) else { return }
+        // 記録シートは閉じない。再生はその上に重なり、閉じると同じ場所へ戻る。
         playbackRoute = PlaybackRoute(context: context)
-        isPresentingLibrary = false
     }
 
     func editStamp(id: String) {
@@ -228,7 +238,6 @@ final class LibraryFeatureViewModel: ObservableObject {
             initialClipIndex: 0,
             mode: .continuousDay
         ))
-        isPresentingLibrary = false
     }
 
     func loadDayIfNeeded(id: String) async {
@@ -344,7 +353,7 @@ final class LibraryFeatureViewModel: ObservableObject {
         guard let clip = clipSummary(id: id),
               let asset = repository.assets(localIdentifiers: [id]).first else {
             exportFailure = .libraryAssetUnavailable
-            exportFailureDetail = DaylogFailure.libraryAssetUnavailable.message
+            exportFailureDetail = VlogishFailure.libraryAssetUnavailable.message
             failedExportTarget = .clip(id: id)
             return
         }
@@ -388,6 +397,20 @@ final class LibraryFeatureViewModel: ObservableObject {
             )
         }
         exportTask?.cancel()
+    }
+
+    /// 完成カードの「共有・保存」。カードを閉じて共有画面を出す（ファイルは共有画面を閉じた時に片付ける）。
+    func shareCompletedExport() {
+        guard let completion = exportCompletion else { return }
+        exportCompletion = nil
+        exportShareItem = ExportShareItem(url: completion.url)
+    }
+
+    /// 完成カードの「閉じる」。共有しないので、書き出したファイルを片付ける。
+    func dismissCompletedExport() {
+        guard let completion = exportCompletion else { return }
+        exportCompletion = nil
+        exportService.discardExport(at: completion.url)
     }
 
     func clearExportShareItem() {
@@ -434,6 +457,8 @@ final class LibraryFeatureViewModel: ObservableObject {
         _ target: LibraryExportTarget,
         initialPhase: DayVideoExportPhase
     ) {
+        // 前の完成カードが残っていたら片付けてから始める。
+        dismissCompletedExport()
         activeExportTarget = target
         exportProgress = DayVideoExportProgress(
             fraction: 0,
@@ -453,7 +478,12 @@ final class LibraryFeatureViewModel: ObservableObject {
             exportService.discardExport(at: url)
             return
         }
-        exportShareItem = ExportShareItem(url: url)
+        if let subject = exportSubject(for: target) {
+            exportCompletion = CameraRollExportCompletion(url: url, subject: subject)
+        } else {
+            // 対象が一覧から消えていた時は、カードを出さずにそのまま共有へ。
+            exportShareItem = ExportShareItem(url: url)
+        }
         activeExportTarget = nil
         exportProgress = nil
         failedExportTarget = nil
@@ -465,7 +495,7 @@ final class LibraryFeatureViewModel: ObservableObject {
         target: LibraryExportTarget
     ) {
         guard activeExportTarget == target else { return }
-        let failure = DaylogFailureMapper.exportFailure(from: error)
+        let failure = VlogishFailureMapper.exportFailure(from: error)
         let suppressFailure = userRequestedExportCancellation
             && failure == .exportCancelled
         exportFailure = suppressFailure ? nil : failure
@@ -492,9 +522,9 @@ final class LibraryFeatureViewModel: ObservableObject {
 
     private func exportFailureDetail(
         for error: Error,
-        failure: DaylogFailure
+        failure: VlogishFailure
     ) -> String {
-        let detail = DaylogFailureMapper.exportFailureDetail(from: error)
+        let detail = VlogishFailureMapper.exportFailureDetail(from: error)
         guard failure == .storageUnavailable,
               let availableCapacity = availableStorageCapacity else {
             return detail
@@ -557,7 +587,8 @@ final class LibraryFeatureViewModel: ObservableObject {
 
     private func appendSections(_ sections: [DaySection]) {
         guard !sections.isEmpty else { return }
-        let merged = Dictionary(uniqueKeysWithValues: (self.sections + sections).map { ($0.id, $0) })
+        // 既に読み込み済みの日が再度届いても落ちないよう、新しい方で上書きする。
+        let merged = Dictionary((self.sections + sections).map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
         self.sections = merged.values.sorted(by: { $0.date > $1.date })
     }
 
@@ -596,8 +627,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     private func makePlaybackDay(from section: DaySection) -> LibraryClipPlaybackDay {
         return LibraryClipPlaybackDay(
             dayKey: section.dayKey,
-            displayDateText: DaylogFormatters.dayTitleFormatter.string(from: section.date),
-            weekdayText: DaylogFormatters.weekdayFormatter.string(from: section.date),
+            displayDateText: VlogishFormatters.dayTitleFormatter.string(from: section.date),
+            weekdayText: VlogishFormatters.weekdayFormatter.string(from: section.date),
             totalDuration: section.totalDuration,
             clipCount: section.clipCount,
             items: section.chronologicalClips.map(PlaybackClipItem.init(clip:))
@@ -612,6 +643,33 @@ final class LibraryFeatureViewModel: ObservableObject {
         sections.lazy.flatMap(\.clips).first { $0.assetLocalIdentifier == id }
     }
 
+    private func exportSubject(for target: LibraryExportTarget) -> CameraRollExportSubject? {
+        switch target {
+        case .day(let id, _):
+            guard let section = section(id: id) else { return nil }
+            return CameraRollExportSubject(
+                origin: .day(id: id),
+                title: Self.stampTitle(for: section.date),
+                clipCount: section.clipCount,
+                durationText: VlogishFormatters.durationLabel(section.totalDuration),
+                clipIDs: section.chronologicalClips.map(\.assetLocalIdentifier)
+            )
+        case .clip(let id):
+            guard let clip = clipSummary(id: id) else { return nil }
+            return CameraRollExportSubject(
+                origin: .clip(id: id),
+                title: "\(Self.stampTitle(for: clip.capturedAt)) \(CameraRollStampFormat.hourMinute.string(from: clip.capturedAt))",
+                clipCount: 1,
+                durationText: VlogishFormatters.durationLabel(clip.duration),
+                clipIDs: [id]
+            )
+        }
+    }
+
+    private static func stampTitle(for date: Date) -> String {
+        "\(CameraRollStampFormat.date.string(from: date)) \(CameraRollStampFormat.weekday.string(from: date).uppercased())"
+    }
+
     private func resolvedAssets(
         for section: DaySection
     ) -> [(asset: PHAsset, capturedAt: Date)] {
@@ -619,7 +677,8 @@ final class LibraryFeatureViewModel: ObservableObject {
             localIdentifiers: section.clips.map(\.assetLocalIdentifier)
         )
         let assetsByIdentifier = Dictionary(
-            uniqueKeysWithValues: fetched.map { ($0.localIdentifier, $0) }
+            fetched.map { ($0.localIdentifier, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         return section.chronologicalClips
             .compactMap { clip in
