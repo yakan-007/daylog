@@ -6,7 +6,14 @@ struct EditableVideoStamp: Sendable {
     let context: VideoPostProcessContext
     let clipDuration: TimeInterval
     let videoAspectRatio: Double
+    /// 保存済みの編集。まだ編集していないクリップでは、共通設定から作った初期状態が入る。
     let clipEdit: VlogClipEdit
+    /// まだ一度も保存していないクリップか。
+    let isFirstEdit: Bool
+    /// 共通の日付スタンプ設定（「全体設定に戻す」と、日付・時刻を後から出す時の書式に使う）。
+    let stampSettings: DateStampSettings
+    /// 撮影場所の名前。取得できない時は nil（「場所」を足せない）。
+    let placeName: String?
     let sourceMetadata: VlogClipSourceMetadata
     let commonStampEnabled: Bool
     let commonElements: Set<DateStampElement>
@@ -21,7 +28,7 @@ final class VideoStampEditingService {
     private let stampRecipeStore: VideoStampRecipeStore
     private let clipEditStore: VlogClipEditStore
     private let placeNameResolver: any PlaceNameResolving
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
 
     init(
         postProcessPipeline: VideoPostProcessPipeline,
@@ -29,7 +36,7 @@ final class VideoStampEditingService {
         stampRecipeStore: VideoStampRecipeStore,
         clipEditStore: VlogClipEditStore,
         placeNameResolver: any PlaceNameResolving = PlaceNameResolver(),
-        settingsStore: DaylogSettingsStore = DaylogSettingsStore()
+        settingsStore: VlogishSettingsStore = VlogishSettingsStore()
     ) {
         self.postProcessPipeline = postProcessPipeline
         self.temporaryFileStore = temporaryFileStore
@@ -42,14 +49,14 @@ final class VideoStampEditingService {
     func load(assetLocalIdentifier: String) async throws -> EditableVideoStamp {
         let asset = try asset(localIdentifier: assetLocalIdentifier)
         guard var recipe = await stampRecipeStore.recipe(for: assetLocalIdentifier) else {
-            throw DaylogStampEditingError.recipeUnavailable
+            throw VlogishStampEditingError.recipeUnavailable
         }
 
         if recipe.renderingMode == .burnOnCapture {
             let input = try await contentEditingInput(for: asset)
             if let adjustmentData = input.adjustmentData,
-               DaylogStampAdjustment.canHandle(adjustmentData),
-               let adjustedContext = try? DaylogStampAdjustment.context(
+               VlogishStampAdjustment.canHandle(adjustmentData),
+               let adjustedContext = try? VlogishStampAdjustment.context(
                 from: adjustmentData
                ) {
                 recipe = VideoStampRecipe(
@@ -69,15 +76,28 @@ final class VideoStampEditingService {
             timeZoneIdentifier: recipe.context.timeZoneIdentifier,
             storageMode: recipe.context.storageMode
         )
-        let clipEdit = try await clipEditStore.edit(for: assetLocalIdentifier)
-            ?? VlogClipEdit(assetLocalIdentifier: assetLocalIdentifier)
+        let videoAspectRatio = asset.pixelHeight > 0
+            ? Double(asset.pixelWidth) / Double(asset.pixelHeight)
+            : 9.0 / 16.0
+        var placeName = context.placeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if placeName?.isEmpty ?? true, let location = asset.location {
+            placeName = await placeNameResolver.placeName(for: location)
+        }
+        let savedEdit = try await clipEditStore.edit(for: assetLocalIdentifier)
+        let clipEdit = savedEdit ?? VlogClipEdit(
+            assetLocalIdentifier: assetLocalIdentifier,
+            // 初めて開いた時は、共通設定の日付スタンプをそのまま置いておく。
+            block: VlogStampLayerSeeder.block(settings: effectiveSettings, placeName: placeName),
+            sourceTimeZoneIdentifier: context.timeZoneIdentifier
+        )
         return EditableVideoStamp(
             context: context,
             clipDuration: asset.duration,
-            videoAspectRatio: asset.pixelHeight > 0
-                ? Double(asset.pixelWidth) / Double(asset.pixelHeight)
-                : 9.0 / 16.0,
+            videoAspectRatio: videoAspectRatio,
             clipEdit: clipEdit,
+            isFirstEdit: savedEdit == nil,
+            stampSettings: commonSettings,
+            placeName: placeName,
             sourceMetadata: VlogClipSourceMetadata(
                 capturedAt: context.stampDate,
                 capturedPlaceName: context.placeName,
@@ -95,6 +115,27 @@ final class VideoStampEditingService {
         try await clipEditStore.save(edit, clipDuration: clipDuration)
     }
 
+    /// 編集画面専用のプレビュー。通常再生の状態機械とは共有せず、閉じたら必ず破棄する。
+    @MainActor
+    @discardableResult
+    func requestPreviewPlayerItem(
+        assetLocalIdentifier: String,
+        completion: @escaping (Result<AVPlayerItem, Error>) -> Void
+    ) throws -> PHImageRequestID {
+        let asset = try asset(localIdentifier: assetLocalIdentifier)
+        return AssetPlaybackLoader.shared.requestPlayerItem(
+            for: asset,
+            deliveryMode: .automatic,
+            timeout: 20,
+            completion: completion
+        )
+    }
+
+    @MainActor
+    func cancelPreviewRequest(_ requestID: PHImageRequestID?) {
+        AssetPlaybackLoader.shared.cancel(requestID)
+    }
+
     func apply(
         assetLocalIdentifier: String,
         visibilityOverride: VideoStampVisibilityOverride?
@@ -103,7 +144,7 @@ final class VideoStampEditingService {
         guard let existingRecipe = await stampRecipeStore.recipe(
             for: assetLocalIdentifier
         ) else {
-            throw DaylogStampEditingError.recipeUnavailable
+            throw VlogishStampEditingError.recipeUnavailable
         }
         let renderingMode = existingRecipe.renderingMode
         let effectiveSettings = settingsStore.dateStampSettings
@@ -137,7 +178,7 @@ final class VideoStampEditingService {
 
         let input = try await contentEditingInput(for: asset)
         guard let audiovisualAsset = input.audiovisualAsset else {
-            throw DaylogStampEditingError.inputUnavailable
+            throw VlogishStampEditingError.inputUnavailable
         }
 
         let renderedURL = try await postProcessPipeline.renderEditedVideo(
@@ -151,7 +192,7 @@ final class VideoStampEditingService {
         }
 
         let output = PHContentEditingOutput(contentEditingInput: input)
-        output.adjustmentData = try DaylogStampAdjustment.makePhotoAdjustment(context: renderContext)
+        output.adjustmentData = try VlogishStampAdjustment.makePhotoAdjustment(context: renderContext)
         do {
             if FileManager.default.fileExists(atPath: output.renderedContentURL.path) {
                 try FileManager.default.removeItem(at: output.renderedContentURL)
@@ -161,7 +202,7 @@ final class VideoStampEditingService {
                 to: output.renderedContentURL
             )
         } catch {
-            throw DaylogStampEditingError.renderedContentUnavailable
+            throw VlogishStampEditingError.renderedContentUnavailable
         }
 
         try await withCheckedThrowingContinuation { continuation in
@@ -173,7 +214,7 @@ final class VideoStampEditingService {
                     continuation.resume()
                 } else {
                     continuation.resume(
-                        throwing: error ?? DaylogStampEditingError.commitFailed
+                        throwing: error ?? VlogishStampEditingError.commitFailed
                     )
                 }
             }
@@ -199,7 +240,7 @@ final class VideoStampEditingService {
             withLocalIdentifiers: [localIdentifier],
             options: nil
         ).firstObject else {
-            throw DaylogStampEditingError.assetUnavailable
+            throw VlogishStampEditingError.assetUnavailable
         }
         return asset
     }
@@ -207,7 +248,7 @@ final class VideoStampEditingService {
     private func contentEditingInput(for asset: PHAsset) async throws -> PHContentEditingInput {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true
-        options.canHandleAdjustmentData = DaylogStampAdjustment.canHandle
+        options.canHandleAdjustmentData = VlogishStampAdjustment.canHandle
 
         return try await withCheckedThrowingContinuation { continuation in
             asset.requestContentEditingInput(with: options) { input, info in
@@ -216,7 +257,7 @@ final class VideoStampEditingService {
                 } else if let error = info[PHContentEditingInputErrorKey] as? Error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(throwing: DaylogStampEditingError.inputUnavailable)
+                    continuation.resume(throwing: VlogishStampEditingError.inputUnavailable)
                 }
             }
         }
