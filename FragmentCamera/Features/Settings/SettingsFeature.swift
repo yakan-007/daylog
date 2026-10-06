@@ -56,6 +56,9 @@ final class SettingsViewModel: ObservableObject {
             settingsStore.stampElements = stampElements
         }
     }
+    @Published var exportEndMarkEnabled: Bool {
+        didSet { settingsStore.exportEndMarkEnabled = exportEndMarkEnabled }
+    }
     @Published private(set) var hasSeenCaptureIntroCard: Bool
     @Published private(set) var hasSeenCaptureCoach: Bool
 
@@ -72,6 +75,7 @@ final class SettingsViewModel: ObservableObject {
         stampRenderingModeKey = settingsStore.stampRenderingMode.rawValue
         videoStorageModeKey = settingsStore.videoStorageMode.rawValue
         locationCaptureEnabled = settingsStore.locationCaptureEnabled
+        exportEndMarkEnabled = settingsStore.exportEndMarkEnabled
         hasSeenCaptureIntroCard = settingsStore.hasSeenCaptureIntroCard
         hasSeenCaptureCoach = settingsStore.hasSeenCaptureCoach
     }
@@ -183,6 +187,7 @@ struct SettingsFeatureView: View {
                 VStack(alignment: .leading, spacing: 32) {
                     stampSection
                     storageSection
+                    exportSection
                     privacySection
                     aboutSection
                 }
@@ -469,6 +474,28 @@ struct SettingsFeatureView: View {
             )
             .rollText(11)
             .foregroundStyle(RollTheme.secondary)
+        }
+    }
+
+    // MARK: Export
+
+    private var exportSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("EXPORT")
+                .padding(.bottom, 4)
+            Toggle(isOn: $viewModel.exportEndMarkEnabled) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.text("書き出しにロゴを入れる"))
+                        .rollText(14)
+                    Text(L10n.text("最後の1.5秒だけ、隅に小さく入ります。写真に残る元の動画には入りません。"))
+                        .rollText(11)
+                        .foregroundStyle(RollTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.vertical, 10)
+            .accessibilityIdentifier("settings.export.endMark")
+            rowDivider
         }
     }
 

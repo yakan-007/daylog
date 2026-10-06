@@ -113,6 +113,7 @@ final class VlogishSettingsStore {
         static let selectedCaptureDuration = "selectedCaptureDuration"
         static let hasSeenCaptureIntroCard = "hasSeenCaptureIntroCard"
         static let hasSeenCaptureCoach = "hasSeenCaptureCoach"
+        static let exportEndMarkEnabled = "exportEndMarkEnabled"
     }
 
     private enum DefaultValue {
@@ -130,6 +131,7 @@ final class VlogishSettingsStore {
         static let selectedCaptureDuration = CaptureDurationPolicy.defaultValue
         static let hasSeenCaptureIntroCard = false
         static let hasSeenCaptureCoach = false
+        static let exportEndMarkEnabled = true
     }
 
     private let defaults: UserDefaults
@@ -315,6 +317,12 @@ final class VlogishSettingsStore {
     var hasSeenCaptureCoach: Bool {
         get { bool(forKey: Key.hasSeenCaptureCoach, default: DefaultValue.hasSeenCaptureCoach) }
         set { defaults.set(newValue, forKey: Key.hasSeenCaptureCoach) }
+    }
+
+    /// 書き出しの最後の1.5秒だけ、隅に小さく VLOGISH を入れる。
+    var exportEndMarkEnabled: Bool {
+        get { bool(forKey: Key.exportEndMarkEnabled, default: DefaultValue.exportEndMarkEnabled) }
+        set { defaults.set(newValue, forKey: Key.exportEndMarkEnabled) }
     }
 
     private func bool(forKey key: String, default defaultValue: Bool) -> Bool {

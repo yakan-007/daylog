@@ -161,6 +161,7 @@ final class DayVideoExporter {
         textOverlaysByClip: [[VlogResolvedTextOverlay]] = [],
         dayKey: String,
         storageMode: VideoStorageMode,
+        addsEndMark: Bool = false,
         progress: @escaping @Sendable (DayVideoExportProgress) -> Void = { _ in }
     ) async throws -> URL {
         guard !assets.isEmpty else {
@@ -206,6 +207,7 @@ final class DayVideoExporter {
                     textOverlaysByClip: sortedTextOverlays,
                     dayKey: dayKey,
                     storageMode: storageMode,
+                    addsEndMark: addsEndMark,
                     progress: { value, phase in
                         progressReporter.report(value, phase: phase)
                     }
@@ -220,6 +222,7 @@ final class DayVideoExporter {
                     textOverlaysByClip: sortedTextOverlays,
                     outputPrefix: "export-\(dayKey)",
                     storageMode: storageMode,
+                    addsEndMark: addsEndMark,
                     progress: { progressReporter.report($0, phase: phase) }
                 )
             }
@@ -244,6 +247,7 @@ final class DayVideoExporter {
         textOverlaysByClip: [[VlogResolvedTextOverlay]],
         dayKey: String,
         storageMode: VideoStorageMode,
+        addsEndMark: Bool,
         progress: @escaping @Sendable (Double, DayVideoExportPhase) -> Void
     ) async throws -> URL {
         let chunkRanges = DayVideoExportPolicy.chunkRanges(for: assets.count)
@@ -263,6 +267,8 @@ final class DayVideoExporter {
                 textOverlaysByClip: Array(textOverlaysByClip[range]),
                 outputPrefix: "export-\(dayKey)-part-\(index + 1)",
                 storageMode: storageMode,
+                // ロゴは動画全体の最後に出すので、最後の分割にだけ入れる。
+                addsEndMark: addsEndMark && index == chunkRanges.count - 1,
                 progress: { chunkProgress in
                     let completed = Double(index) + chunkProgress
                     progress(
@@ -309,6 +315,7 @@ final class DayVideoExporter {
         textOverlaysByClip: [[VlogResolvedTextOverlay]],
         outputPrefix: String,
         storageMode: VideoStorageMode,
+        addsEndMark: Bool,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         let built = try await compositionBuilder.build(
@@ -316,6 +323,7 @@ final class DayVideoExporter {
             storageMode: storageMode,
             stampContexts: stampContexts,
             textOverlaysByClip: textOverlaysByClip,
+            addsEndMark: addsEndMark,
             progress: { progress($0 * 0.35) }
         ) { [self] index in
             try await requestAVAsset(

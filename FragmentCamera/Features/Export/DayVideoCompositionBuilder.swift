@@ -23,6 +23,7 @@ final class DayVideoCompositionBuilder {
         storageMode: VideoStorageMode,
         stampContexts: [VideoPostProcessContext?] = [],
         textOverlaysByClip: [[VlogResolvedTextOverlay]] = [],
+        addsEndMark: Bool = false,
         progress: @Sendable (Double) -> Void = { _ in },
         assetAt: (Int) async throws -> AVAsset
     ) async throws -> BuiltDayVideoComposition {
@@ -127,7 +128,15 @@ final class DayVideoCompositionBuilder {
         videoComposition.instructions = instructions
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = encodingPolicy.frameDuration
-        if stampContexts.count == layouts.count || textOverlaysByClip.count == layouts.count {
+        let endMark: ExportEndMark? = addsEndMark ? layouts.last.map { last in
+            let lastContext = stampContexts.count == layouts.count ? stampContexts.last ?? nil : nil
+            return ExportEndMark(
+                videoDuration: cursor,
+                contentFrame: contentFrame(for: last, renderSize: renderSize),
+                lastStampPosition: lastContext?.stampEnabled == true ? lastContext?.position : nil
+            )
+        } : nil
+        if stampContexts.count == layouts.count || textOverlaysByClip.count == layouts.count || endMark != nil {
             let timedStamps: [TimedVideoStamp] = layouts.enumerated().compactMap { index, layout in
                 guard stampContexts.count == layouts.count else { return nil }
                 return stampContexts[index].map {
@@ -164,7 +173,8 @@ final class DayVideoCompositionBuilder {
                 on: videoComposition,
                 renderSize: renderSize,
                 stamps: timedStamps,
-                vlogTextOverlays: timedTextOverlays
+                vlogTextOverlays: timedTextOverlays,
+                endMark: endMark
             )
         }
         return BuiltDayVideoComposition(

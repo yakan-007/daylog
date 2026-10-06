@@ -433,3 +433,5 @@
 "%d本・上限超え" = "%d clips · Over limit";
 "本数が多すぎます" = "Too Many Clips";
 "1回に書き出せるのは%d本までです。この日は%d本あります。いらないクリップを外してから、もう一度お試しください。" = "You can export up to %d clips at a time, and this day has %d. Remove clips you don't need, then try again.";
+"書き出しにロゴを入れる" = "Add Logo to Exports";
+"最後の1.5秒だけ、隅に小さく入ります。写真に残る元の動画には入りません。" = "A small mark appears in the corner for the last 1.5 seconds. Original videos in Photos stay unchanged.";

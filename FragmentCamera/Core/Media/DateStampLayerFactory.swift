@@ -9,6 +9,34 @@ struct TimedVideoStamp: Sendable {
     let contentFrame: CGRect
 }
 
+/// 書き出しの最後に入れる小さなロゴの置き方。
+struct ExportEndMark: Sendable {
+    static let text = "VLOGISH"
+    /// 動画の終わりから何秒前に出すか。
+    static let visibleDuration: Double = 1.5
+    static let fadeDuration: Double = 0.3
+    static let opacity: Float = 0.72
+
+    let start: CMTime
+    let contentFrame: CGRect
+    /// 右下にスタンプがある時だけ、重ならないよう左下へ置く。
+    let placesOnLeft: Bool
+
+    init(videoDuration: CMTime, contentFrame: CGRect, lastStampPosition: DateStampPosition?) {
+        let duration = max(videoDuration.seconds.isFinite ? videoDuration.seconds : 0, 0)
+        start = CMTime(
+            seconds: max(duration - Self.visibleDuration, 0),
+            preferredTimescale: 600
+        )
+        self.contentFrame = contentFrame
+        if let position = lastStampPosition {
+            placesOnLeft = position.row == 2 && position.column == 2
+        } else {
+            placesOnLeft = false
+        }
+    }
+}
+
 /// 撮影時の焼き込みと一日動画の書き出しで、同じ文字・余白・フェードを使う。
 enum DateStampLayerFactory {
     static func installSingleStamp(
@@ -42,11 +70,13 @@ enum DateStampLayerFactory {
         on videoComposition: AVMutableVideoComposition,
         renderSize: CGSize,
         stamps: [TimedVideoStamp],
-        vlogTextOverlays: [TimedVlogTextOverlay] = []
+        vlogTextOverlays: [TimedVlogTextOverlay] = [],
+        endMark: ExportEndMark? = nil
     ) {
         let stampLayers: [CALayer] = makeTimedTextLayers(stamps: stamps)
         let textLayers = stampLayers
             + VlogTextLayerFactory.makeTimedTextLayers(overlays: vlogTextOverlays)
+            + (endMark.map { [makeEndMarkLayer($0)] } ?? [])
         guard !textLayers.isEmpty else { return }
         installAnimationLayers(
             on: videoComposition,
@@ -131,6 +161,51 @@ enum DateStampLayerFactory {
             dy: contentFrame.origin.y
         )
         return textLayer
+    }
+
+    /// 書き出しの最後に出す小さな VLOGISH。スタンプと同じ白・影で、少し透かす。
+    static func makeEndMarkLayer(_ mark: ExportEndMark) -> CATextLayer {
+        let size = mark.contentFrame.size
+        let shortSide = min(size.width, size.height)
+        let fontSize = max(10, shortSide * 0.03)
+        let margin = DateStampStyle.margin(for: size)
+        let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+        let text = NSAttributedString(
+            string: ExportEndMark.text,
+            attributes: [
+                .font: font,
+                .kern: fontSize * 0.18,
+                .foregroundColor: UIColor.white
+            ]
+        )
+        let textSize = text.size()
+        let width = ceil(textSize.width) + 4
+        let height = ceil(textSize.height) + 2
+        let x = mark.placesOnLeft
+            ? mark.contentFrame.minX + margin
+            : mark.contentFrame.maxX - margin - width
+        // Core Animation は左下原点なので、下の余白はそのまま y になる。
+        let y = mark.contentFrame.minY + margin
+
+        let layer = CATextLayer()
+        layer.string = text
+        layer.alignmentMode = mark.placesOnLeft ? .left : .right
+        layer.frame = CGRect(x: x, y: y, width: width, height: height)
+        layer.shadowOpacity = 0.35
+        layer.shadowRadius = 2
+        layer.shadowOffset = CGSize(width: 0, height: 1)
+        layer.contentsScale = UIScreen.main.scale
+        layer.opacity = 0
+
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = ExportEndMark.opacity
+        fadeIn.beginTime = AVCoreAnimationBeginTimeAtZero + max(mark.start.seconds, 0)
+        fadeIn.duration = ExportEndMark.fadeDuration
+        fadeIn.fillMode = .forwards
+        fadeIn.isRemovedOnCompletion = false
+        layer.add(fadeIn, forKey: "vlogish-end-mark")
+        return layer
     }
 
     private static func fontReference(font: UIFont) -> CFTypeRef {

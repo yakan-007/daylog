@@ -133,6 +133,7 @@ final class LibraryVideoExportService {
             textOverlaysByClip: textOverlaysByClip,
             dayKey: outputKey,
             storageMode: storageMode,
+            addsEndMark: settingsStore.exportEndMarkEnabled,
             progress: {
                 progress(LibraryExportProgressMapper.exporting($0))
             }
