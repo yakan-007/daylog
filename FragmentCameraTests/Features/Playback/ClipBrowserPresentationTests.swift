@@ -197,6 +197,64 @@ final class ClipBrowserPresentationTests: XCTestCase {
         ))!
     }
 
+    func testRubberBandResistsAndNeverExceedsTheLimit() {
+        XCTAssertEqual(ClipBrowserSwipePolicy.rubberBand(0, dimension: 120), 0)
+        let small = ClipBrowserSwipePolicy.rubberBand(40, dimension: 120)
+        let large = ClipBrowserSwipePolicy.rubberBand(400, dimension: 120)
+        XCTAssertGreaterThan(small, 0)
+        XCTAssertLessThan(small, 40, "引いた距離より小さく動く")
+        XCTAssertLessThan(large, 120, "上限を超えない")
+        XCTAssertEqual(ClipBrowserSwipePolicy.rubberBand(-40, dimension: 120), -small, accuracy: 0.0001)
+    }
+
+    func testPresenterProvidesSegmentsForTheProgressBar() {
+        let items = [
+            makeItem(id: "clip-1", hour: 9, minute: 0),
+            makeItem(id: "clip-2", hour: 12, minute: 0),
+            makeItem(id: "clip-3", hour: 18, minute: 0)
+        ]
+        let state = ClipBrowserPresenter.makeState(
+            day: makeDay(items: items),
+            item: items[2],
+            clipIndex: 2,
+            canRetreatClip: true,
+            canAdvanceClip: false,
+            canRetreatDay: false,
+            canAdvanceDay: false,
+            isLoading: false,
+            didFailToLoad: false
+        )
+
+        XCTAssertEqual(state.segmentDurations, [3, 3, 3])
+        XCTAssertEqual(state.currentClipIndex, 2)
+        XCTAssertFalse(state.stampDateText.isEmpty)
+        XCTAssertEqual(state.stampTimeText.count, 5, "HH:mm の形")
+        XCTAssertNil(state.placeText, "地名が無ければ出さない")
+    }
+
+    func testProgressLayoutSwitchesToContinuousWhenSegmentsGetTooThin() {
+        let width: CGFloat = 350
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 1, width: width), .continuous)
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 6, width: width), .segmented(gap: 3))
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 39, width: width), .segmented(gap: 3))
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 40, width: width), .segmented(gap: 1.5))
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 78, width: width), .segmented(gap: 1.5))
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 79, width: width), .continuous)
+        XCTAssertEqual(PlaybackProgressLayout.style(count: 300, width: width), .continuous)
+    }
+
+    func testSegmentWidthsFollowDurationAndFillTheBar() {
+        let widths = PlaybackProgressLayout.segmentWidths(durations: [1, 3, 5], width: 100, gap: 2)
+        XCTAssertEqual(widths.reduce(0, +), 96, accuracy: 0.001, "すき間を除いた幅をちょうど使い切る")
+        XCTAssertLessThan(widths[0], widths[1])
+        XCTAssertLessThan(widths[1], widths[2])
+        XCTAssertGreaterThanOrEqual(widths[0], 2, "短いクリップも最小幅は残す")
+
+        let zeroes = PlaybackProgressLayout.segmentWidths(durations: [0, 0], width: 50, gap: 2)
+        XCTAssertEqual(zeroes, [24, 24])
+        XCTAssertEqual(PlaybackProgressLayout.segmentWidths(durations: [], width: 50, gap: 2), [])
+    }
+
     private func makeItem(id: String, hour: Int, minute: Int) -> PlaybackClipItem {
         PlaybackClipItem(
             assetLocalIdentifier: id,

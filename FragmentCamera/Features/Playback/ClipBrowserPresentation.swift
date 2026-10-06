@@ -21,6 +21,13 @@ struct ClipBrowserScreenState: Equatable {
     let stampContext: VideoPostProcessContext?
     let textOverlays: [VlogResolvedTextOverlay]
     let videoAspectRatio: CGFloat
+    /// 画面左上のスタンプ表記。例: "10.06 TUE" / "18:39" / "渋谷区"
+    var stampDateText: String = ""
+    var stampTimeText: String = ""
+    var placeText: String? = nil
+    /// 下のバー用。その日のクリップの長さ（古い順）と、いま再生中の位置。
+    var segmentDurations: [TimeInterval] = []
+    var currentClipIndex: Int = 0
 }
 
 enum ClipBrowserSwipeAxis: Equatable {
@@ -42,6 +49,14 @@ enum ClipBrowserSwipePolicy {
     private static let commitDistance: CGFloat = 64
     private static let minimumFlickDistance: CGFloat = 18
     private static let projectedCommitDistance: CGFloat = 108
+
+    /// 送れない方向へ引いた時の抵抗。引くほど重くなり、`dimension` を超えない。
+    static func rubberBand(_ offset: CGFloat, dimension: CGFloat) -> CGFloat {
+        guard dimension > 0, offset.isFinite else { return 0 }
+        let distance = abs(offset)
+        let resisted = (1 - 1 / (distance * 0.55 / dimension + 1)) * dimension
+        return offset < 0 ? -resisted : resisted
+    }
 
     static func dominantAxis(for translation: CGSize) -> ClipBrowserSwipeAxis? {
         let horizontal = abs(translation.width)
@@ -139,8 +154,63 @@ enum ClipBrowserPresenter {
             canAdvanceDay: canAdvanceDay,
             stampContext: stampContext,
             textOverlays: textOverlays,
-            videoAspectRatio: videoAspectRatio
+            videoAspectRatio: videoAspectRatio,
+            stampDateText: "\(CameraRollStampFormat.date.string(from: item.capturedAt)) \(CameraRollStampFormat.weekday.string(from: item.capturedAt).uppercased())",
+            stampTimeText: CameraRollStampFormat.hourMinute.string(from: item.capturedAt),
+            placeText: stampContext?.placeName
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 },
+            segmentDurations: day.items.map { max($0.duration, 0) },
+            currentClipIndex: clipIndex
         )
+    }
+}
+
+// MARK: - Progress bar layout
+
+/// 再生画面下のバー。クリップごとに区切って並べ、本数が多すぎて区切りが読めなくなったら1本のバーにする。
+enum PlaybackProgressLayout {
+    static let regularGap: CGFloat = 3
+    static let compactGap: CGFloat = 1.5
+    /// 区切りとして読める最小の幅。
+    static let regularMinimumWidth: CGFloat = 6
+    static let compactMinimumWidth: CGFloat = 3
+
+    enum Style: Equatable {
+        /// 区切って並べる。`gap` は区切りの隙間。
+        case segmented(gap: CGFloat)
+        /// 1本のバー（本数が多い日）。
+        case continuous
+    }
+
+    static func style(count: Int, width: CGFloat) -> Style {
+        guard count > 1, width > 0 else { return .continuous }
+        if averageWidth(count: count, width: width, gap: regularGap) >= regularMinimumWidth {
+            return .segmented(gap: regularGap)
+        }
+        if averageWidth(count: count, width: width, gap: compactGap) >= compactMinimumWidth {
+            return .segmented(gap: compactGap)
+        }
+        return .continuous
+    }
+
+    /// 各区切りの幅。長いクリップほど広いが、短いものも最小幅は確保し、合計は `width` からすき間を引いた値に一致する。
+    static func segmentWidths(durations: [TimeInterval], width: CGFloat, gap: CGFloat) -> [CGFloat] {
+        let count = durations.count
+        guard count > 0 else { return [] }
+        let available = max(width - gap * CGFloat(count - 1), 0)
+        let minimum = min(2, available / CGFloat(count))
+        let flexible = available - minimum * CGFloat(count)
+        let safeDurations = durations.map { $0.isFinite ? max($0, 0) : 0 }
+        let total = safeDurations.reduce(0, +)
+        guard total > 0 else {
+            return Array(repeating: available / CGFloat(count), count: count)
+        }
+        return safeDurations.map { minimum + flexible * CGFloat($0 / total) }
+    }
+
+    private static func averageWidth(count: Int, width: CGFloat, gap: CGFloat) -> CGFloat {
+        (width - gap * CGFloat(count - 1)) / CGFloat(count)
     }
 }
 

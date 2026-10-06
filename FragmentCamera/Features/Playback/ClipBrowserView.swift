@@ -37,22 +37,49 @@ struct ClipBrowserView: View {
     let actions: ClipBrowserActions
 
     @State private var dragTranslation: CGSize = .zero
+    /// ページ送りのアニメーション用の横位置（指の動きとは別に持つ）。
+    @State private var settleOffset: CGFloat = 0
+    @State private var pageWidth: CGFloat = 390
+    /// 送り出した方向（-1: 次へ、1: 前へ）。新しい動画が準備できるまで保持する。
+    @State private var pendingPageDirection: CGFloat?
+    @State private var pendingFromItemID: String?
+    @State private var pageTurnCount = 0
     @State private var showsLoadingIndicator = false
-    @State private var controlsVisible = true
-    @State private var controlsInteractionID = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             playbackPage
-                .offset(x: dragOffset)
-                .scaleEffect(dragScale)
+                .offset(x: settleOffset + dragOffset)
+
+            // 日付と進み具合は動画と一緒に流さず、画面に固定して出しっぱなしにする。
+            playbackChrome
 
             loadingAndFailureContent
         }
         .contentShape(Rectangle())
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { pageWidth = max(proxy.size.width, 1) }
+                    .onChange(of: proxy.size.width) { _, width in pageWidth = max(width, 1) }
+            }
+        }
         .simultaneousGesture(horizontalSwipeGesture)
+        .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: pageTurnCount)
+        .sensoryFeedback(.selection, trigger: state.isPaused)
+        .onChange(of: pageReadyKey) { _, _ in
+            bringInNextPageIfReady()
+        }
+        .task(id: pendingFromItemID) {
+            // 送り先の準備が長引いても、画面が外へ出たままにならないようにする。
+            guard pendingFromItemID != nil else { return }
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            finishPendingPage(force: true)
+        }
         .onTapGesture(perform: handleSurfaceTap)
         .background(Color.black.ignoresSafeArea())
         .task(id: state.isLoading) {
@@ -62,29 +89,6 @@ struct ClipBrowserView: View {
             guard !Task.isCancelled, state.isLoading else { return }
             showsLoadingIndicator = true
         }
-        .task(id: controlsAutohideID) {
-            guard controlsVisible,
-                  !state.isPaused,
-                  !state.isLoading,
-                  !state.didFailToLoad else { return }
-            try? await Task.sleep(for: .seconds(2.2))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-                controlsVisible = false
-            }
-        }
-        .onChange(of: state.itemID) { _, _ in
-            revealControls()
-        }
-        .onChange(of: state.isPaused) { _, isPaused in
-            if isPaused {
-                controlsVisible = true
-            }
-            controlsInteractionID += 1
-        }
-        .onChange(of: state.isLoading) { _, _ in
-            controlsInteractionID += 1
-        }
     }
 
     private var playbackPage: some View {
@@ -92,7 +96,6 @@ struct ClipBrowserView: View {
             ClipBrowserPlayerSurface(player: player)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-            playbackScrims
             if let stampContext = state.stampContext {
                 DateStampPlaybackOverlay(
                     itemID: state.itemID,
@@ -111,18 +114,40 @@ struct ClipBrowserView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
             }
+        }
+    }
 
-            if controlsVisible {
-                overlayContent
-                    .transition(.opacity)
+    // MARK: Chrome
+
+    private var playbackChrome: some View {
+        ZStack {
+            playbackScrims
+
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Spacer(minLength: 0)
+                footer
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 20)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("playback.item")
+            .accessibilityValue(state.itemID)
+            .accessibilityHint(playbackHint)
+
+            if state.isPaused && !state.isLoading && !state.didFailToLoad {
+                pausedButton
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: state.isPaused)
     }
 
     private var playbackScrims: some View {
         VStack(spacing: 0) {
             LinearGradient(
-                colors: [.black.opacity(0.58), .clear],
+                colors: [.black.opacity(0.5), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -131,16 +156,82 @@ struct ClipBrowserView: View {
             Spacer()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.68)],
+                colors: [.clear, .black.opacity(0.55)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 180)
+            .frame(height: 170)
         }
         .ignoresSafeArea()
-        .opacity(controlsVisible ? 1 : 0)
-        .animation(.easeOut(duration: 0.2), value: controlsVisible)
         .allowsHitTesting(false)
+    }
+
+    /// 左上のスタンプ表記。右上の閉じるボタン（PlaybackFeatureView）の分は空けておく。
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(verbatim: state.stampDateText.isEmpty ? state.dateText : state.stampDateText)
+                .rollMono(15, .semibold, maxScale: 1.3)
+                .tracking(0.6)
+                .accessibilityLabel(state.dateText)
+                .accessibilityIdentifier("playback.date")
+            Text(verbatim: timeLine)
+                .rollMono(11, maxScale: 1.3)
+                .opacity(0.78)
+                .accessibilityLabel(state.timeText)
+                .accessibilityIdentifier("playback.time")
+        }
+        .lineLimit(1)
+        .foregroundStyle(.white)
+        .padding(.trailing, 64)
+        .allowsHitTesting(false)
+    }
+
+    private var timeLine: String {
+        let time = state.stampTimeText.isEmpty ? state.timeText : state.stampTimeText
+        guard let place = state.placeText else { return time }
+        return "\(time) · \(place)"
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PlaybackSegmentedProgress(
+                durations: state.segmentDurations,
+                currentIndex: state.currentClipIndex,
+                clipProgress: state.clipProgress,
+                dayProgress: state.dayProgress
+            )
+            .frame(height: 3)
+
+            HStack {
+                Text(verbatim: state.positionText)
+                    .rollMono(11, maxScale: 1.3)
+                    .accessibilityIdentifier("playback.position")
+                Spacer(minLength: 8)
+                Text(L10n.text("左右で前後 · 下にスワイプで閉じる"))
+                    .rollText(10, maxScale: 1.3)
+                    .tracking(0.4)
+                    .opacity(0.6)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(.white)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var pausedButton: some View {
+        Button(action: actions.onTogglePlayback) {
+            Image(systemName: "play.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(RollTheme.ink)
+                .offset(x: 2)
+                .frame(width: 68, height: 68)
+                .background(Color.white.opacity(0.92), in: Circle())
+        }
+        .buttonStyle(SquishableButtonStyle())
+        .accessibilityLabel(L10n.text("再生"))
+        .accessibilityIdentifier("playback.toggle")
     }
 
     @ViewBuilder
@@ -151,25 +242,24 @@ struct ClipBrowserView: View {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.15)
-                    Text("読み込み中")
-                        .font(.system(size: 12, weight: .medium))
+                    Text(L10n.text("読み込み中"))
+                        .rollText(12, .medium)
                         .foregroundStyle(.white.opacity(0.72))
                 }
             }
 
             if state.didFailToLoad {
                 VStack(spacing: 14) {
-                    Text("動画を読み込めませんでした")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.82))
+                    Text(L10n.text("動画を読み込めませんでした"))
+                        .rollText(15, .semibold)
+                        .foregroundStyle(.white.opacity(0.86))
                     Button(action: actions.onRetry) {
-                        Label("もう一度", systemImage: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(DaylogModernTheme.accent)
-                            .clipShape(Capsule())
+                        Label(L10n.text("もう一度"), systemImage: "arrow.clockwise")
+                            .rollText(13, .semibold)
+                            .foregroundStyle(RollTheme.ink)
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 40)
+                            .background(Color.white, in: Capsule())
                     }
                     .buttonStyle(SquishableButtonStyle())
                 }
@@ -177,97 +267,22 @@ struct ClipBrowserView: View {
         }
     }
 
-    private var overlayContent: some View {
-        ZStack {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(state.dateText)
-                        .font(.system(size: 17, weight: .semibold))
-                        .tracking(-0.2)
-                        .foregroundStyle(.white)
-                        .accessibilityIdentifier("playback.date")
-                    Text(state.timeText)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .accessibilityIdentifier("playback.time")
-                }
-
-                Spacer()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(state.positionText)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .accessibilityIdentifier("playback.position")
-
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(.white.opacity(0.25))
-                            Capsule()
-                                .fill(.white)
-                                .frame(width: max(4, proxy.size.width * CGFloat(state.dayProgress)))
-                        }
-                    }
-                    .frame(height: 2)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 22)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("playback.item")
-            .accessibilityValue(state.itemID)
-            .accessibilityHint(playbackHint)
-
-            Button {
-                actions.onTogglePlayback()
-                controlsVisible = true
-                controlsInteractionID += 1
-            } label: {
-                Image(systemName: state.isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(.black.opacity(0.36), in: Circle())
-                    .overlay {
-                        Circle().stroke(.white.opacity(0.36), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(SquishableButtonStyle())
-            .accessibilityLabel(state.isPaused ? L10n.text("再生") : L10n.text("一時停止"))
-            .accessibilityIdentifier("playback.toggle")
-            .disabled(state.isLoading || state.didFailToLoad)
-        }
-    }
-
     private var playbackHint: String {
-        if state.canRetreatClip || state.canAdvanceClip {
-            return L10n.text("左右で同じ日の前後")
-        }
-        return L10n.text("この日の動画はここまで")
+        let base = state.canRetreatClip || state.canAdvanceClip
+            ? L10n.text("左右で同じ日の前後")
+            : L10n.text("この日の動画はここまで")
+        return L10n.text("%@。タップで一時停止", base)
     }
 
-    private var controlsAutohideID: String {
-        "\(state.itemID)-\(state.isPaused)-\(state.isLoading)-\(controlsInteractionID)"
-    }
-
+    /// 画面のタップは一時停止と再生の切り替え。
     private func handleSurfaceTap() {
-        guard !state.didFailToLoad else { return }
-        withAnimation(.easeOut(duration: 0.18)) {
-            controlsVisible = state.isPaused ? true : !controlsVisible
-        }
-        controlsInteractionID += 1
+        guard !state.isLoading,
+              !state.didFailToLoad,
+              pendingPageDirection == nil else { return }
+        actions.onTogglePlayback()
     }
 
-    private func revealControls() {
-        withAnimation(.easeOut(duration: 0.18)) {
-            controlsVisible = true
-        }
-        controlsInteractionID += 1
-    }
-
+    /// 指に合わせた横移動。送れる方向は指に1:1でついてくる。送れない方向はゴムのように重く止まる。
     private var dragOffset: CGFloat {
         guard ClipBrowserSwipePolicy.dominantAxis(for: dragTranslation) == .horizontal else {
             return 0
@@ -275,18 +290,21 @@ struct ClipBrowserView: View {
         let canNavigate = dragTranslation.width < 0
             ? state.canAdvanceClip
             : state.canRetreatClip
-        let response: CGFloat = canNavigate ? 0.72 : 0.2
-        return max(min(dragTranslation.width, 220), -220) * response
+        return canNavigate
+            ? dragTranslation.width
+            : ClipBrowserSwipePolicy.rubberBand(dragTranslation.width, dimension: pageWidth * 0.35)
     }
 
-    private var dragScale: CGFloat {
-        1 - min(abs(dragOffset) / 8_000, 0.012)
+    private var pageReadyKey: String {
+        "\(state.itemID)-\(state.isLoading)-\(state.didFailToLoad)"
     }
 
     private var horizontalSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard !state.isLoading, !state.isTransitioning else { return }
+                guard pendingPageDirection == nil,
+                      !state.isLoading,
+                      !state.isTransitioning else { return }
                 guard ClipBrowserSwipePolicy.dominantAxis(for: value.translation) == .horizontal else {
                     dragTranslation = .zero
                     return
@@ -294,31 +312,142 @@ struct ClipBrowserView: View {
                 dragTranslation = value.translation
             }
             .onEnded { value in
-                withAnimation(.interactiveSpring(
-                    response: 0.26,
-                    dampingFraction: 0.88
-                )) {
-                    dragTranslation = .zero
-                }
                 handleSwipe(value.translation, predicted: value.predictedEndTranslation)
             }
     }
 
+    /// 送る時は、今の動画を指の向きへ押し出し、準備できた次の動画を反対側から入れる。
     private func handleSwipe(_ translation: CGSize, predicted: CGSize) {
-        guard !state.isLoading,
+        let releasedOffset = dragOffset
+        guard pendingPageDirection == nil,
+              !state.isLoading,
               !state.isTransitioning,
               let intent = ClipBrowserSwipePolicy.intent(
                 translation: translation,
                 predictedEndTranslation: predicted
-              ) else { return }
+              ) else {
+            springBack()
+            return
+        }
+
+        let direction: CGFloat
+        let action: () -> Void
         switch intent {
         case .advanceClip where state.canAdvanceClip:
-            actions.onAdvanceClip()
+            direction = -1
+            action = actions.onAdvanceClip
         case .retreatClip where state.canRetreatClip:
-            actions.onRetreatClip()
+            direction = 1
+            action = actions.onRetreatClip
         case .advanceClip, .retreatClip, .advanceDay, .retreatDay:
-            break
+            springBack()
+            return
         }
+
+        // 指を離した位置からそのまま続けて押し出す（見た目が飛ばないように）。
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            settleOffset = releasedOffset
+            dragTranslation = .zero
+        }
+        pendingPageDirection = direction
+        pendingFromItemID = state.itemID
+        pageTurnCount += 1
+        withAnimation(.easeIn(duration: 0.16)) {
+            settleOffset = direction * pageWidth
+        }
+        action()
+    }
+
+    private func springBack() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+            dragTranslation = .zero
+            settleOffset = 0
+        }
+    }
+
+    private func bringInNextPageIfReady() {
+        guard pendingPageDirection != nil,
+              state.itemID != pendingFromItemID,
+              !state.isLoading else { return }
+        finishPendingPage(force: false)
+    }
+
+    /// 次の動画を反対側から入れる。送れなかった（同じ動画のまま）時は元の位置へ戻す。
+    private func finishPendingPage(force: Bool) {
+        guard let direction = pendingPageDirection else { return }
+        let didMove = state.itemID != pendingFromItemID
+        pendingPageDirection = nil
+        pendingFromItemID = nil
+        guard didMove else {
+            springBack()
+            return
+        }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            settleOffset = -direction * pageWidth * 0.35
+        }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            settleOffset = 0
+        }
+    }
+}
+
+/// 下の進み具合。クリップごとに区切り、見終わった分は白、いまのクリップは途中まで白、この先は薄い白。
+/// 本数が多くて区切りが読めない日は、1本のバーで一日の進み具合を出す（`PlaybackProgressLayout`）。
+private struct PlaybackSegmentedProgress: View {
+    let durations: [TimeInterval]
+    let currentIndex: Int
+    let clipProgress: Double
+    let dayProgress: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let track = Color.white.opacity(0.3)
+            let fill = Color.white
+            let radius = size.height / 2
+
+            switch PlaybackProgressLayout.style(count: durations.count, width: size.width) {
+            case .continuous:
+                let full = CGRect(origin: .zero, size: size)
+                context.fill(Path(roundedRect: full, cornerRadius: radius), with: .color(track))
+                let done = CGRect(x: 0, y: 0, width: size.width * clamp(dayProgress), height: size.height)
+                context.fill(Path(roundedRect: done, cornerRadius: radius), with: .color(fill))
+
+            case .segmented(let gap):
+                let widths = PlaybackProgressLayout.segmentWidths(
+                    durations: durations,
+                    width: size.width,
+                    gap: gap
+                )
+                var x: CGFloat = 0
+                for (index, width) in widths.enumerated() {
+                    let rect = CGRect(x: x, y: 0, width: width, height: size.height)
+                    let segmentRadius = min(radius, width / 2)
+                    context.fill(Path(roundedRect: rect, cornerRadius: segmentRadius), with: .color(track))
+                    let fraction: Double
+                    if index < currentIndex {
+                        fraction = 1
+                    } else if index == currentIndex {
+                        fraction = clamp(clipProgress)
+                    } else {
+                        fraction = 0
+                    }
+                    if fraction > 0 {
+                        let done = CGRect(x: x, y: 0, width: width * fraction, height: size.height)
+                        context.fill(Path(roundedRect: done, cornerRadius: segmentRadius), with: .color(fill))
+                    }
+                    x += width + gap
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func clamp(_ value: Double) -> Double {
+        value.isFinite ? min(max(value, 0), 1) : 0
     }
 }
 
@@ -386,18 +515,18 @@ private struct DateStampPlaybackOverlay: View {
     }
 
     private var textAlignment: TextAlignment {
-        switch context.position {
-        case .topLeading, .bottomLeading: return .leading
-        case .topTrailing, .bottomTrailing: return .trailing
-        case .center: return .center
+        switch context.position.column {
+        case 0: return .leading
+        case 2: return .trailing
+        default: return .center
         }
     }
 
     private var frameAlignment: Alignment {
-        switch context.position {
-        case .topLeading, .bottomLeading: return .topLeading
-        case .topTrailing, .bottomTrailing: return .topTrailing
-        case .center: return .top
+        switch context.position.column {
+        case 0: return .topLeading
+        case 2: return .topTrailing
+        default: return .top
         }
     }
 

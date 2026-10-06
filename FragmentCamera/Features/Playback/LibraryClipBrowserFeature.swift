@@ -27,7 +27,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
     private let mode: ClipPlaybackMode
     private let stampContextService: VideoStampContextService
     private let clipEditStore: VlogClipEditStore
-    private let settingsStore: DaylogSettingsStore
+    private let settingsStore: VlogishSettingsStore
     private var currentRequestID: PHImageRequestID?
     private var loadingAssetIdentifier: String?
     private var prefetchRequestIDs: [PHImageRequestID] = []
@@ -75,7 +75,7 @@ final class LibraryClipBrowserViewModel: ObservableObject {
         repository: PlaybackAssetRepository,
         stampContextService: VideoStampContextService = VideoStampContextService(),
         clipEditStore: VlogClipEditStore = VlogClipEditStore(),
-        settingsStore: DaylogSettingsStore = DaylogSettingsStore()
+        settingsStore: VlogishSettingsStore = VlogishSettingsStore()
     ) {
         precondition(
             !context.days.isEmpty && context.days.allSatisfy { !$0.items.isEmpty },

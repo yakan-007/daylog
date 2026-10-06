@@ -43,8 +43,8 @@ struct PlaybackClipItem: Identifiable, Hashable, Sendable {
             capturedAt: clip.capturedAt,
             dayKey: clip.dayKey,
             duration: clip.duration,
-            displayDateText: DaylogFormatters.feedDateFormatter.string(from: clip.capturedAt),
-            displayTimeText: DaylogFormatters.feedTimeFormatter.string(from: clip.capturedAt)
+            displayDateText: VlogishFormatters.feedDateFormatter.string(from: clip.capturedAt),
+            displayTimeText: VlogishFormatters.feedTimeFormatter.string(from: clip.capturedAt)
         )
     }
 }
