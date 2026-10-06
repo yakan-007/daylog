@@ -20,6 +20,8 @@ struct CameraRollView: View {
     /// 完成カードの「共有・保存」と「閉じる」。
     var onShareExport: () -> Void = {}
     var onDismissExport: () -> Void = {}
+    /// 動画を削除する（1日の詳細のメニューから）。
+    var onDeleteClip: (String) -> Void = { _ in }
 
     @State private var surface: Surface = .feed
     /// カレンダーから開いたが読み込めなかった日。スピナーのまま止まらないよう、失敗を表示して再試行できるようにする。
@@ -114,10 +116,11 @@ struct CameraRollView: View {
                     .monthStart(containing: latestDate)
             }
         }
-        .onChange(of: state.days.map(\.id)) { _, ids in
-            // 開いている日がライブラリから消えたら、元の画面へ戻す。
-            if case .day(let id, let origin) = surface, !ids.contains(id), origin == .feed {
-                surface = .feed
+        .onChange(of: state.days.map(\.id)) { oldIDs, ids in
+            // 開いていた日がライブラリから消えたら（最後の1本を削除した時など）、元の画面へ戻す。
+            // カレンダーから開いてまだ読み込み中の日は、消えたのではないので戻さない。
+            if case .day(let id, let origin) = surface, oldIDs.contains(id), !ids.contains(id) {
+                surface = origin == .feed ? .feed : .calendar
             }
         }
     }
@@ -300,7 +303,8 @@ struct CameraRollView: View {
                     onClipTap: onClipTap,
                     onEditStamp: onEditStamp,
                     onExportClip: onExportClip,
-                    onCancelExport: onCancelExport
+                    onCancelExport: onCancelExport,
+                    onDeleteClip: onDeleteClip
                 )
             }
             .background(RollTheme.ground)

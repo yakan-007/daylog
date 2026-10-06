@@ -22,6 +22,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     @Published var libraryFailure: VlogishFailure?
     @Published var isLimitedLibraryNoticePresented = false
     @Published var stampEditorRoute: VideoStampEditorRoute?
+    /// 動画を削除できなかった時の説明（アラートに出す）。
+    @Published var deleteFailureMessage: String?
 
     private let useCase: VlogishLibraryUseCase
     private let repository: VlogishPhotoLibraryRepository
@@ -212,6 +214,25 @@ final class LibraryFeatureViewModel: ObservableObject {
         guard let context = makeLibraryClipPlaybackContext(selectedClipId: id) else { return }
         // 記録シートは閉じない。再生はその上に重なり、閉じると同じ場所へ戻る。
         playbackRoute = PlaybackRoute(context: context)
+    }
+
+    /// 動画を削除する。写真ライブラリからも消える（iOS の確認が出て、「最近削除した項目」に30日残る）。
+    func deleteClip(id: String) {
+        guard !hasActiveExport else { return }
+        Task { @MainActor in
+            do {
+                try await repository.deleteAsset(localIdentifier: id)
+                await stampEditingService.forgetClip(assetLocalIdentifier: id)
+                await refreshLibrary(requestAuthorizationIfNeeded: false, reportsFailure: false)
+            } catch let error as PHPhotosError where error.code == .userCancelled {
+                // iOS の確認でキャンセルした。何もしない。
+            } catch {
+                AppLog.storage.error(
+                    "clip.delete.fail reason=\(error.localizedDescription, privacy: .private)"
+                )
+                deleteFailureMessage = error.localizedDescription
+            }
+        }
     }
 
     func editStamp(id: String) {

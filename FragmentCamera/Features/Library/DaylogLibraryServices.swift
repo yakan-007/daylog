@@ -71,6 +71,16 @@ final class VlogishPhotoLibraryRepository: NSObject, PHPhotoLibraryChangeObserve
         PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
     }
 
+    /// 写真ライブラリから動画を削除する。iOS が確認を出し、消した動画は「最近削除した項目」に30日残る。
+    /// 利用者が確認でキャンセルした時は `PHPhotosError.userCancelled` が返る。
+    func deleteAsset(localIdentifier: String) async throws {
+        let identifiers = [localIdentifier]
+        try await PHPhotoLibrary.shared().performChanges {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
+            PHAssetChangeRequest.deleteAssets(assets)
+        }
+    }
+
     func clipSummary(localIdentifier: String) -> ClipSummary? {
         asset(localIdentifier: localIdentifier).map(makeClipSummary)
     }

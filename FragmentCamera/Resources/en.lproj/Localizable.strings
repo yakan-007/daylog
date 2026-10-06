@@ -424,3 +424,5 @@
 "通して見る" = "Watch All";
 "編集データの形式（%d）には対応していません。" = "This edit data format (%d) isn't supported.";
 "編集データを読み込めませんでした。" = "Couldn't read the edit data.";
+"削除" = "Delete";
+"動画を削除できませんでした" = "Couldn't Delete the Video";

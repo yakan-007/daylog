@@ -9,6 +9,7 @@ struct CameraRollDayDetailView: View {
     let onEditStamp: (String) -> Void
     let onExportClip: (String) -> Void
     let onCancelExport: () -> Void
+    var onDeleteClip: (String) -> Void = { _ in }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -83,7 +84,8 @@ struct CameraRollDayDetailView: View {
                 onTap: { onClipTap(clip.id) },
                 onEditStamp: { onEditStamp(clip.id) },
                 onExport: { onExportClip(clip.id) },
-                onCancelExport: onCancelExport
+                onCancelExport: onCancelExport,
+                onDelete: { onDeleteClip(clip.id) }
             )
         case .gap(_, let hourLabel, let text):
             HStack(spacing: 0) {
@@ -138,6 +140,7 @@ private struct CameraRollTimelineClipRow: View {
     let onEditStamp: () -> Void
     let onExport: () -> Void
     let onCancelExport: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -209,6 +212,15 @@ private struct CameraRollTimelineClipRow: View {
             }
             .disabled(!clip.canExport && !clip.isExporting)
             .accessibilityIdentifier("library.clip.export")
+
+            Divider()
+
+            // 確認は iOS が出す（写真ライブラリから消すため）。消した動画は「最近削除した項目」に30日残る。
+            Button(role: .destructive, action: onDelete) {
+                Label(L10n.text("削除"), systemImage: "trash")
+            }
+            .disabled(clip.isExporting)
+            .accessibilityIdentifier("library.clip.delete")
         } label: {
             ZStack {
                 if clip.isExporting {

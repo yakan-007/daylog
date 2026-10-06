@@ -111,6 +111,18 @@ final class VideoStampEditingService {
         )
     }
 
+    /// 動画を消した後に、その動画の編集内容とスタンプ設定を片付ける（残っていても害はないので失敗は記録だけ）。
+    func forgetClip(assetLocalIdentifier: String) async {
+        do {
+            try await clipEditStore.removeEdit(for: assetLocalIdentifier)
+            try await stampRecipeStore.removeRecipe(for: assetLocalIdentifier)
+        } catch {
+            AppLog.storage.error(
+                "clip.forget.fail reason=\(error.localizedDescription, privacy: .private)"
+            )
+        }
+    }
+
     func saveClipEdit(_ edit: VlogClipEdit, clipDuration: TimeInterval) async throws {
         try await clipEditStore.save(edit, clipDuration: clipDuration)
     }
