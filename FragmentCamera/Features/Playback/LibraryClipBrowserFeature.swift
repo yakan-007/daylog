@@ -682,11 +682,12 @@ final class LibraryClipBrowserViewModel: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self, weak item] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if self.mode == .continuousDay, self.canAdvanceClip {
-                    Task { @MainActor [weak self, weak item] in
+                    // item は外側で弱参照にしてあるので、ここではそのまま使う（強参照で抱え込まない）。
+                    Task { @MainActor [weak self] in
                         await Task.yield()
                         guard let self, let item else { return }
                         self.adoptContinuousNextItem(after: item)
