@@ -12,9 +12,10 @@
 - Description bullets:
   - `Capture a moment in one tap (1–5 seconds)`
   - `Watch every moment from earliest to latest`
-  - `Change the date, time, place, position, and fade later`
+  - `See your day on one timeline, quiet hours included`
+  - `Add a note under the date, or move and resize the stamp`
   - `Export one clip or your whole day with the current stamp`
-  - `Portrait and landscape capture with native iPhone lenses`
+  - `Portrait capture with native iPhone lenses`
   - `No account required; videos stay in your photo library`
 
 ## Metadata (Japanese)
@@ -25,9 +26,10 @@
 - Description bullets:
   - `最短ワンタップ撮影（1〜5秒）`
   - `一日の瞬間を古い順に連続再生`
-  - `日付・時刻・場所・位置・フェードを後から変更`
+  - `撮っていない時間も見える、一日の時間軸`
+  - `日付の下にひとこと。位置や大きさも後から変更`
   - `単体動画と一日動画を、現在のスタンプで書き出し`
-  - `iPhoneのレンズを活かした縦向き / 横向き撮影`
+  - `iPhoneのレンズを活かした縦向き撮影`
   - `アカウント不要。動画は写真ライブラリへ保存`
 
 ## Privacy URLs
@@ -35,11 +37,12 @@
 - Privacy Policy URL: `https://github.com/yakan-007/daylog/blob/main/PRIVACY.md`
 
 ## Screenshots (English and Japanese)
+見出し入りの画像は `AppStore/Screenshots/compose.py` で作る（手順は同フォルダの README）。
 - [ ] `Capture a moment. Keep living.` / `一瞬を撮って、日常へ戻る。`
-- [ ] `Watch your day unfold.` / `一日の流れを、古い順に。`
-- [ ] `Time and place, your way.` / `日付・時刻・場所を、好きな形で。`
-- [ ] `Change the stamp later.` / `スタンプは後から変更。`
-- [ ] `Share the whole day.` / `一日を一本にして共有。`
+- [ ] `Your day, on one timeline.` / `一日を、一本の時間軸に。`
+- [ ] `Even the quiet hours are part of it.` / `撮っていない時間も、一日のうち。`
+- [ ] `Add a note to the date.` / `日付に、ひとこと添えて。`
+- [ ] `Share the whole day as one video.` / `一日を一本にして、そのまま共有。`
 
 ## Before Paying / Enrolling
 - [ ] Confirm `Vlogish` in App Store Connect and perform a trademark check
@@ -61,7 +64,7 @@
 - [ ] Export shows a busy state, then opens the share sheet or a clear failure message
 - [ ] Export progress increases from 0 to 100%; cancel stops the export and removes temporary files
 - [ ] 80 clips show a warning; 100 and 150 clips complete via chunked export
-- [ ] Portrait/landscape setting rotates the UI, preview, saved video, timestamp, and place name consistently
+- [ ] Capture stays portrait; preview, saved video, timestamp, and place name line up consistently
 - [ ] All five stamp positions match the preview; center includes date; fade ON disappears after 2 seconds and OFF remains visible
 - [ ] A newly captured clip can change or remove its stamp later without creating a duplicate asset; Photos can revert to the clean original
 - [ ] A legacy baked-stamp clip explains that it cannot be re-edited and never overlays a second stamp
