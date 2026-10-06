@@ -24,7 +24,7 @@ struct CameraRollHeroDay: View {
             if let text = item.exportAssessment.indicatorText {
                 Label(text, systemImage: "exclamationmark.triangle")
                     .rollText(11, .medium)
-                    .foregroundStyle(item.exportAssessment.load == .heavy ? VlogishModernTheme.danger : RollTheme.secondary)
+                    .foregroundStyle((item.exportAssessment.load == .heavy || item.exportAssessment.load == .overLimit) ? VlogishModernTheme.danger : RollTheme.secondary)
                     .padding(.horizontal, RollTheme.pagePadding)
                     .accessibilityLabel(L10n.text("結合時に注意が必要です。%@", text))
             }

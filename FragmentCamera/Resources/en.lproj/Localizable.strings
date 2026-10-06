@@ -115,9 +115,9 @@
 "本数の多い日です" = "This Day Has Many Clips";
 "%d本・結合注意" = "%d clips · Export note";
 "%d本・分割処理" = "%d clips · Chunked export";
-"結合する本数に上限はありません。この日は%d本あります。時間と一時容量が増えるため、充電しながらアプリを開いたまま結合してください。" = "There is no fixed clip limit. This day has %d clips. Export will take more time and temporary storage, so keep the app open and your iPhone connected to power.";
-"結合する本数に上限はありません。この日は%d本あります。安定性を優先して%d本ずつ分割処理します。完了まで充電しながらアプリを開いたままにしてください。" = "There is no fixed clip limit. This day has %d clips, so they will be processed in groups of %d for stability. Keep the app open and your iPhone connected to power.";
-"結合する本数に上限はありません。%d本以上では事前に確認し、%d本以上は%d本ずつ分割して処理します。" = "There is no fixed clip limit. You'll be asked to confirm at %d clips, and days with %d or more clips are processed in groups of %d.";
+"この日は%d本あります。時間と一時容量が増えるため、充電しながらアプリを開いたまま書き出してください。" = "This day has %d clips. Exporting will take more time and temporary storage, so keep the app open and your iPhone connected to power.";
+"この日は%d本あります。安定して処理するため、%d本ずつ分けて書き出します。完了まで充電しながらアプリを開いたままにしてください。" = "This day has %d clips, so they'll be exported in groups of %d for stability. Keep the app open and your iPhone connected to power until it's done.";
+"1回に書き出せるのは%d本までです。%d本以上では事前に確認し、%d本以上は%d本ずつ分けて処理します。" = "You can export up to %d clips at a time. You'll be asked to confirm at %d clips, and days with %d or more clips are processed in groups of %d.";
 "%d本の動画を確認中" = "Checking %d videos";
 "書き出しを準備中" = "Preparing Export";
 "スタンプを確認中（%d/%d）" = "Checking Stamps (%d/%d)";
@@ -430,3 +430,6 @@
 "写真からも削除" = "Delete from Photos";
 "Vlogishから外しても、動画は写真に残ります。" = "Removing it from Vlogish keeps the video in Photos.";
 "Vlogishから外せませんでした" = "Couldn't Remove from Vlogish";
+"%d本・上限超え" = "%d clips · Over limit";
+"本数が多すぎます" = "Too Many Clips";
+"1回に書き出せるのは%d本までです。この日は%d本あります。いらないクリップを外してから、もう一度お試しください。" = "You can export up to %d clips at a time, and this day has %d. Remove clips you don't need, then try again.";

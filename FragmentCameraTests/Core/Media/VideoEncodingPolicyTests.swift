@@ -43,4 +43,26 @@ final class VideoEncodingPolicyTests: XCTestCase {
             [AVAssetExportPresetHEVC1920x1080, AVAssetExportPreset1280x720]
         )
     }
+
+    func testStandardLibraryOutputStaysHEVC() {
+        let policy = VideoEncodingPolicy(storageMode: .standard, purpose: .library)
+
+        XCTAssertEqual(
+            policy.exportPresets,
+            [AVAssetExportPresetHEVCHighestQuality, AVAssetExportPresetHighestQuality]
+        )
+    }
+
+    func testStandardSharingOutputUsesCompatibleH264() {
+        let policy = VideoEncodingPolicy(storageMode: .standard)
+
+        XCTAssertEqual(policy.exportPresets, [AVAssetExportPresetHighestQuality])
+    }
+
+    func testPassthroughPrefersMovAndDoesNotReencode() {
+        let policy = VideoEncodingPolicy(storageMode: .compact, purpose: .passthrough)
+
+        XCTAssertEqual(policy.exportPresets, [AVAssetExportPresetPassthrough])
+        XCTAssertEqual(policy.preferredOutputType(from: [.mp4, .mov]), .mov)
+    }
 }

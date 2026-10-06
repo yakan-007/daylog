@@ -186,6 +186,14 @@ final class DayVideoExporter {
             ? textOverlaysByClip
             : Array(repeating: [], count: assets.count)
         let sortedTextOverlays = order.map { normalizedTextOverlays[$0] }
+        // 途中で容量が尽きて失敗するより、始める前に止める。
+        try ensureFreeSpace(
+            required: DayVideoExportPolicy.estimatedRequiredBytes(
+                totalDuration: sortedAssets.reduce(0.0) { $0 + $1.duration },
+                clipCount: sortedAssets.count,
+                storageMode: storageMode
+            )
+        )
         let progressReporter = DayVideoExportProgressReporter(callback: progress)
         progressReporter.report(0, phase: .preparing)
         AppLog.export.info("day_export.begin day=\(dayKey, privacy: .private) clips=\(sortedAssets.count, privacy: .public) compact=\(storageMode == .compact, privacy: .public)")
@@ -266,6 +274,16 @@ final class DayVideoExporter {
             intermediateURLs.append(url)
         }
 
+        // 分割ファイルの形が揃っていれば、再エンコードせずにつなぐ（速く、画質も落ちない）。
+        progress(0.8, .combiningChunks)
+        if let joined = try await joinWithoutReencoding(
+            intermediateURLs,
+            outputPrefix: "export-\(dayKey)",
+            progress: { progress(0.8 + ($0 * 0.2), .finalizing) }
+        ) {
+            return joined
+        }
+
         let built = try await compositionBuilder.build(
             sourceCount: intermediateURLs.count,
             storageMode: storageMode,
@@ -319,6 +337,107 @@ final class DayVideoExporter {
             requiresAudioTrack: built.containsAudio,
             progress: { progress(0.35 + ($0 * 0.65)) }
         )
+    }
+
+    /// 分割ファイルが全部同じ大きさ・向きなら、そのままつないで書き出す。
+    /// 揃っていない時や失敗した時は nil を返し、呼び出し側が従来どおり書き出し直す。
+    private func joinWithoutReencoding(
+        _ urls: [URL],
+        outputPrefix: String,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL? {
+        let composition = AVMutableComposition()
+        guard let videoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else { return nil }
+        let audioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        )
+        var expectedSize: CGSize?
+        var cursor: CMTime = .zero
+        var containsAudio = false
+
+        for url in urls {
+            try Task.checkCancellation()
+            let asset = AVURLAsset(url: url)
+            let assetDuration = try await asset.load(.duration)
+            guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else {
+                return nil
+            }
+            let (naturalSize, transform, trackRange) = try await sourceVideo.load(
+                .naturalSize,
+                .preferredTransform,
+                .timeRange
+            )
+            guard transform.isIdentity,
+                  expectedSize == nil || expectedSize == naturalSize,
+                  let videoRange = MediaTrackTiming.usableVideoRange(
+                    assetDuration: assetDuration,
+                    trackRange: trackRange
+                  ) else {
+                return nil
+            }
+            expectedSize = naturalSize
+            try videoTrack.insertTimeRange(videoRange, of: sourceVideo, at: cursor)
+
+            if let sourceAudio = try await asset.loadTracks(withMediaType: .audio).first,
+               let audioTrack,
+               let insertion = MediaTrackTiming.audioInsertion(
+                audioRange: try await sourceAudio.load(.timeRange),
+                videoRange: videoRange,
+                destinationCursor: cursor
+               ) {
+                try audioTrack.insertTimeRange(
+                    insertion.sourceRange,
+                    of: sourceAudio,
+                    at: insertion.destinationStart
+                )
+                containsAudio = true
+            }
+            cursor = CMTimeAdd(cursor, videoRange.duration)
+        }
+        if !containsAudio, let audioTrack {
+            composition.removeTrack(audioTrack)
+        }
+
+        do {
+            let url = try await mediaExporter.export(
+                asset: composition,
+                videoComposition: nil,
+                encodingPolicy: VideoEncodingPolicy(storageMode: .standard, purpose: .passthrough),
+                outputPrefix: outputPrefix,
+                backgroundTaskName: "DayVideoExportJoin",
+                requiresAudioTrack: containsAudio,
+                progress: progress
+            )
+            AppLog.export.info("day_export.joined_without_reencode parts=\(urls.count, privacy: .public)")
+            return url
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            AppLog.export.warning(
+                "day_export.join_passthrough.fail reason=\(error.localizedDescription, privacy: .private)"
+            )
+            return nil
+        }
+    }
+
+    private func ensureFreeSpace(required: Int64) throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        guard let available = (try? directory.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ))?.volumeAvailableCapacityForImportantUsage else {
+            return
+        }
+        guard available >= required else {
+            AppLog.export.error(
+                "day_export.insufficient_space required_mb=\(required / 1_000_000, privacy: .public) available_mb=\(available / 1_000_000, privacy: .public)"
+            )
+            // 既存の「容量が足りません」の案内に乗せる。
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)
+        }
     }
 
     private func requestAVAsset(

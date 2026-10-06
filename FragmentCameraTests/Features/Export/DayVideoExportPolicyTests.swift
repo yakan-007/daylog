@@ -20,9 +20,54 @@ final class DayVideoExportPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(assessment.load, .heavy)
-        XCTAssertTrue(assessment.confirmationMessage.contains("分割処理"))
+        XCTAssertTrue(assessment.confirmationMessage.contains("24本ずつ"))
         XCTAssertEqual(DayVideoExportPolicy.chunkSize, 24)
-        XCTAssertTrue(DayVideoExportPolicy.guidanceText.contains("上限はありません"))
+        XCTAssertTrue(assessment.canExport)
+        XCTAssertTrue(DayVideoExportPolicy.guidanceText.contains("200本まで"))
+    }
+
+    func testMaxClipCountIsStillExportable() {
+        let assessment = DayVideoExportPolicy.assess(
+            clipCount: DayVideoExportPolicy.maxClipCount,
+            totalDuration: 600
+        )
+
+        XCTAssertEqual(assessment.load, .heavy)
+        XCTAssertTrue(assessment.canExport)
+    }
+
+    func testOverMaxClipCountIsBlocked() {
+        let assessment = DayVideoExportPolicy.assess(
+            clipCount: DayVideoExportPolicy.maxClipCount + 1,
+            totalDuration: 603
+        )
+
+        XCTAssertEqual(assessment.load, .overLimit)
+        XCTAssertTrue(assessment.requiresConfirmation)
+        XCTAssertFalse(assessment.canExport)
+        XCTAssertEqual(assessment.indicatorText, "201本・上限超え")
+    }
+
+    func testRequiredSpaceDoublesForChunkedDays() {
+        let single = DayVideoExportPolicy.estimatedRequiredBytes(
+            totalDuration: 100,
+            clipCount: DayVideoExportPolicy.heavyClipCount - 1,
+            storageMode: .standard
+        )
+        let chunked = DayVideoExportPolicy.estimatedRequiredBytes(
+            totalDuration: 100,
+            clipCount: DayVideoExportPolicy.heavyClipCount,
+            storageMode: .standard
+        )
+        let compact = DayVideoExportPolicy.estimatedRequiredBytes(
+            totalDuration: 100,
+            clipCount: DayVideoExportPolicy.heavyClipCount - 1,
+            storageMode: .compact
+        )
+
+        XCTAssertEqual(single, 450_000_000)
+        XCTAssertEqual(chunked, 700_000_000)
+        XCTAssertLessThan(compact, single)
     }
 
     func testNormalDaysDoNotInterruptExport() {

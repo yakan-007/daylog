@@ -314,7 +314,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     }
 
     func confirmExport(_ confirmation: DayVideoExportConfirmation) {
-        guard let section = section(id: confirmation.dayID) else {
+        guard confirmation.assessment.canExport,
+              let section = section(id: confirmation.dayID) else {
             exportConfirmation = nil
             return
         }

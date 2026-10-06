@@ -68,7 +68,14 @@ struct VlogishLibrarySheetView: View {
             )
         }
         .alert(item: $viewModel.exportConfirmation) { confirmation in
-            Alert(
+            guard confirmation.assessment.canExport else {
+                return Alert(
+                    title: Text(confirmation.assessment.confirmationTitle),
+                    message: Text(confirmation.assessment.confirmationMessage),
+                    dismissButton: .cancel(Text("閉じる"), action: viewModel.cancelExportConfirmation)
+                )
+            }
+            return Alert(
                 title: Text(confirmation.assessment.confirmationTitle),
                 message: Text(confirmation.assessment.confirmationMessage),
                 primaryButton: .default(Text("結合する")) {

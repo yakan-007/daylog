@@ -166,6 +166,10 @@ final class VideoPostProcessPipeline {
                 audioInsertion: audioInsertion,
                 context: context
             )
+            // 節約が効いているかを実機で確かめるため、変換前後の大きさを残す。
+            AppLog.save.info(
+                "save.postprocess.size compact=\(context.storageMode == .compact, privacy: .public) stamp=\(context.stampEnabled, privacy: .public) source_kb=\(fileKilobytes(at: inputURL), privacy: .public) output_kb=\(fileKilobytes(at: processedURL), privacy: .public)"
+            )
             return ProcessedVideoResult(
                 finalURL: processedURL,
                 stampApplied: context.stampEnabled,
@@ -173,7 +177,7 @@ final class VideoPostProcessPipeline {
             )
         } catch {
             AppLog.save.warning("save.postprocess.fail compact=\(context.storageMode == .compact, privacy: .public) reason=\(error.localizedDescription, privacy: .private)")
-            guard context.storageMode == .standard else { throw error }
+            // 変換に失敗しても、撮った動画は元のまま保存する（節約でも保存そのものは失敗させない）。
             return ProcessedVideoResult(
                 finalURL: inputURL,
                 stampApplied: false,
@@ -254,7 +258,7 @@ final class VideoPostProcessPipeline {
         let preferredTransform = try await sourceVideoTrack.load(.preferredTransform)
         let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let sourceRenderSize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
-        let encodingPolicy = VideoEncodingPolicy(storageMode: context.storageMode)
+        let encodingPolicy = VideoEncodingPolicy(storageMode: context.storageMode, purpose: .library)
         let renderSize = encodingPolicy.renderSize(for: sourceRenderSize)
         let scale = renderSize.width / max(sourceRenderSize.width, 1)
 
@@ -297,4 +301,9 @@ final class VideoPostProcessPipeline {
         )
     }
 
+}
+
+private func fileKilobytes(at url: URL) -> Int {
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+    return size / 1024
 }

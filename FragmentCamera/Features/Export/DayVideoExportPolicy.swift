@@ -5,6 +5,8 @@ enum DayVideoExportLoad: Equatable {
     case standard
     case elevated
     case heavy
+    /// 1回に書き出せる本数を超えている。
+    case overLimit
 }
 
 struct DayVideoExportAssessment: Equatable {
@@ -16,6 +18,10 @@ struct DayVideoExportAssessment: Equatable {
         load != .standard
     }
 
+    var canExport: Bool {
+        load != .overLimit
+    }
+
     var indicatorText: String? {
         switch load {
         case .standard:
@@ -24,6 +30,8 @@ struct DayVideoExportAssessment: Equatable {
             return L10n.text("%d本・結合注意", clipCount)
         case .heavy:
             return L10n.text("%d本・分割処理", clipCount)
+        case .overLimit:
+            return L10n.text("%d本・上限超え", clipCount)
         }
     }
 
@@ -35,6 +43,8 @@ struct DayVideoExportAssessment: Equatable {
             return L10n.text("本数の多い日です")
         case .heavy:
             return L10n.text("本数の多い日です")
+        case .overLimit:
+            return L10n.text("本数が多すぎます")
         }
     }
 
@@ -43,9 +53,11 @@ struct DayVideoExportAssessment: Equatable {
         case .standard:
             return ""
         case .elevated:
-            return L10n.text("結合する本数に上限はありません。この日は%d本あります。時間と一時容量が増えるため、充電しながらアプリを開いたまま結合してください。", clipCount)
+            return L10n.text("この日は%d本あります。時間と一時容量が増えるため、充電しながらアプリを開いたまま書き出してください。", clipCount)
         case .heavy:
-            return L10n.text("結合する本数に上限はありません。この日は%d本あります。安定性を優先して%d本ずつ分割処理します。完了まで充電しながらアプリを開いたままにしてください。", clipCount, DayVideoExportPolicy.chunkSize)
+            return L10n.text("この日は%d本あります。安定して処理するため、%d本ずつ分けて書き出します。完了まで充電しながらアプリを開いたままにしてください。", clipCount, DayVideoExportPolicy.chunkSize)
+        case .overLimit:
+            return L10n.text("1回に書き出せるのは%d本までです。この日は%d本あります。いらないクリップを外してから、もう一度お試しください。", DayVideoExportPolicy.maxClipCount, clipCount)
         }
     }
 }
@@ -58,8 +70,27 @@ enum DayVideoExportPolicy {
     /// 1つのAVMutableCompositionが同時に参照する素材数を抑える。
     static let chunkSize = 24
 
+    /// 1回に書き出せる本数。数秒のクリップなら200本で10分前後になり、これを超える日は想定外として止める。
+    static let maxClipCount = 200
+
+    /// 書き出しサイズの見積もり（多めに見る）。標準は1080pのH.264最高画質、節約は720pのHEVC。
+    static func estimatedOutputBytesPerSecond(for storageMode: VideoStorageMode) -> Double {
+        storageMode == .compact ? 500_000 : 2_500_000
+    }
+
+    /// 書き出しに要る一時容量の見積もり。分割する日は、分割ファイルと最終ファイルが同時に残る。
+    static func estimatedRequiredBytes(
+        totalDuration: TimeInterval,
+        clipCount: Int,
+        storageMode: VideoStorageMode
+    ) -> Int64 {
+        let output = max(totalDuration, 0) * estimatedOutputBytesPerSecond(for: storageMode)
+        let copies: Double = clipCount >= heavyClipCount ? 2 : 1
+        return Int64(output * copies) + 200_000_000
+    }
+
     static var guidanceText: String {
-        L10n.text("結合する本数に上限はありません。%d本以上では事前に確認し、%d本以上は%d本ずつ分割して処理します。", cautionClipCount, heavyClipCount, chunkSize)
+        L10n.text("1回に書き出せるのは%d本までです。%d本以上では事前に確認し、%d本以上は%d本ずつ分けて処理します。", maxClipCount, cautionClipCount, heavyClipCount, chunkSize)
     }
 
     static func orderedIndices(
@@ -126,7 +157,9 @@ enum DayVideoExportPolicy {
         totalDuration: TimeInterval
     ) -> DayVideoExportAssessment {
         let load: DayVideoExportLoad
-        if clipCount >= heavyClipCount {
+        if clipCount > maxClipCount {
+            load = .overLimit
+        } else if clipCount >= heavyClipCount {
             load = .heavy
         } else if clipCount >= cautionClipCount {
             load = .elevated
