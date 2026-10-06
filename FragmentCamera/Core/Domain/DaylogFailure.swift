@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-enum DaylogFailure: String, Identifiable, Equatable, Sendable {
+enum VlogishFailure: String, Identifiable, Equatable, Sendable {
     case photoLibraryPermission
     case photoLibraryReadPermission
     case storageUnavailable
@@ -81,8 +81,8 @@ enum DaylogFailure: String, Identifiable, Equatable, Sendable {
     }
 }
 
-enum DaylogFailureMapper {
-    static func captureSaveFailure(from error: Error) -> DaylogFailure {
+enum VlogishFailureMapper {
+    static func captureSaveFailure(from error: Error) -> VlogishFailure {
         if case VideoPostProcessError.audioTrackMissing = error {
             return .audioRecordingUnavailable
         }
@@ -98,7 +98,7 @@ enum DaylogFailureMapper {
         return .saveFailed
     }
 
-    static func exportFailure(from error: Error) -> DaylogFailure {
+    static func exportFailure(from error: Error) -> VlogishFailure {
         if isStorageUnavailable(error) || error is TemporaryFileStoreError {
             return .storageUnavailable
         }
@@ -148,10 +148,10 @@ enum DaylogFailureMapper {
             case .photoKitUnavailable:
                 return L10n.text("写真ライブラリまたはiCloudから動画を取得できませんでした。通信状態を確認し、写真アプリで対象動画を一度開いてから、もう一度お試しください。")
             case .cancelled:
-                return DaylogFailure.exportCancelled.message
+                return VlogishFailure.exportCancelled.message
             case .exportFailed(let message):
                 return detail(
-                    base: DaylogFailure.exportFailed.message,
+                    base: VlogishFailure.exportFailed.message,
                     systemMessage: message
                 )
             }
@@ -162,12 +162,12 @@ enum DaylogFailureMapper {
             case .exportSessionUnavailable:
                 return L10n.text("iOSが動画の書き出し処理を開始できませんでした。ほかの動画処理を終了し、アプリを開き直してからお試しください。")
             case .unsupportedOutputType:
-                return DaylogFailure.exportUnsupported.message
+                return VlogishFailure.exportUnsupported.message
             case .audioTrackMissing:
                 return L10n.text("結合後の動画から音声が失われたため、壊れた動画を共有せず処理を止めました。元の動画を写真アプリで再生できるか確認してください。")
             case .exportFailed(let message):
                 return detail(
-                    base: DaylogFailure.exportFailed.message,
+                    base: VlogishFailure.exportFailed.message,
                     systemMessage: message
                 )
             }
@@ -183,7 +183,7 @@ enum DaylogFailureMapper {
         )
     }
 
-    static func libraryFailure(from error: Error) -> DaylogFailure {
+    static func libraryFailure(from error: Error) -> VlogishFailure {
         if let repositoryError = error as? PhotoLibraryRepositoryError {
             switch repositoryError {
             case .authorizationNotDetermined, .permissionDenied:

@@ -2,7 +2,7 @@ import Photos
 import XCTest
 @testable import FragmentCamera
 
-final class DaylogStampAdjustmentTests: XCTestCase {
+final class VlogishStampAdjustmentTests: XCTestCase {
     func testRoundTripsEveryEditableStampSetting() throws {
         let context = VideoPostProcessContext(
             stampEnabled: true,
@@ -19,10 +19,10 @@ final class DaylogStampAdjustmentTests: XCTestCase {
             storageMode: .compact
         )
 
-        let adjustment = try DaylogStampAdjustment.makePhotoAdjustment(context: context)
+        let adjustment = try VlogishStampAdjustment.makePhotoAdjustment(context: context)
 
-        XCTAssertTrue(DaylogStampAdjustment.canHandle(adjustment))
-        XCTAssertEqual(try DaylogStampAdjustment.context(from: adjustment), context)
+        XCTAssertTrue(VlogishStampAdjustment.canHandle(adjustment))
+        XCTAssertEqual(try VlogishStampAdjustment.context(from: adjustment), context)
     }
 
     func testRejectsAdjustmentFromAnotherEditor() {
@@ -32,8 +32,8 @@ final class DaylogStampAdjustmentTests: XCTestCase {
             data: Data()
         )
 
-        XCTAssertFalse(DaylogStampAdjustment.canHandle(adjustment))
-        XCTAssertThrowsError(try DaylogStampAdjustment.context(from: adjustment))
+        XCTAssertFalse(VlogishStampAdjustment.canHandle(adjustment))
+        XCTAssertThrowsError(try VlogishStampAdjustment.context(from: adjustment))
     }
 
 }

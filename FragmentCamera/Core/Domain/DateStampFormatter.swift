@@ -3,7 +3,7 @@ import OSLog
 
 enum DateStampFormatter {
     private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "FragmentCamera",
+        subsystem: Bundle.main.bundleIdentifier ?? "Vlogish",
         category: "settings"
     )
     static let compactDateTime = "y.M.d H:mm"
@@ -24,6 +24,12 @@ enum DateStampFormatter {
         return zeroPadded ? zeroPaddedDateTime : compactDateTime
     }
 
+    /// 保存されている書式から日付の並び順を読む。旧形式（"y.M.d H:mm" など）は年・月・日として扱う。
+    static func dateOrder(storedFormat: String) -> DateStampDateOrder {
+        DateStampDateOrder(rawValue: storedFormat.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? .yearMonthDay
+    }
+
     static func lines(
         from date: Date,
         storedFormat: String,
@@ -33,10 +39,9 @@ enum DateStampFormatter {
         placeName: String? = nil,
         timeZone: TimeZone? = nil
     ) -> [String] {
-        let resolved = resolvedFormat(storedFormat: storedFormat, zeroPadded: zeroPadded)
         let dateText = string(
             from: date,
-            format: resolved == zeroPaddedDateTime ? "yyyy.MM.dd" : "y.M.d",
+            format: dateOrder(storedFormat: storedFormat).datePattern(zeroPadded: zeroPadded),
             timeZone: timeZone
         )
         let timeText = timeString(
@@ -89,7 +94,9 @@ enum DateStampFormatter {
         timeZone: TimeZone?
     ) -> String {
         let formatter = Foundation.DateFormatter()
-        formatter.locale = Locale.current
+        // 数字だけの書式なので、地域による数字や暦の違いが出ないよう固定する。
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = format
         formatter.timeZone = timeZone
         return formatter.string(from: date)

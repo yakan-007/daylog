@@ -1,7 +1,7 @@
 import Foundation
 import Photos
 
-enum DaylogStampAdjustment {
+enum VlogishStampAdjustment {
     static let formatIdentifier = "com.leo.vlogish.stamp"
     static let formatVersion = "2.0"
 
@@ -22,7 +22,7 @@ enum DaylogStampAdjustment {
 
     static func context(from adjustmentData: PHAdjustmentData) throws -> VideoPostProcessContext {
         guard canHandle(adjustmentData) else {
-            throw DaylogStampEditingError.unsupportedAdjustment
+            throw VlogishStampEditingError.unsupportedAdjustment
         }
         return try JSONDecoder().decode(
             VideoPostProcessContext.self,
@@ -31,7 +31,7 @@ enum DaylogStampAdjustment {
     }
 }
 
-enum DaylogStampEditingError: LocalizedError {
+enum VlogishStampEditingError: LocalizedError {
     case assetUnavailable
     case recipeUnavailable
     case unsupportedAdjustment

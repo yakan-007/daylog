@@ -94,10 +94,11 @@ extension DateStampSettings {
 ///
 /// 画面ごとに `@AppStorage` を持つと、キー名や既定値がずれやすいため、
 /// 永続設定へのアクセスはこの型を経由する。
-final class DaylogSettingsStore {
+final class VlogishSettingsStore {
     private enum Key {
         static let stampEnabled = "isDateStampEnabled"
         static let stampFormat = "dateStampFormat"
+        static let stampDateOrder = "dateStampDateOrder"
         static let stampZeroPadded = "dateStampZeroPadded"
         static let stampTimeStyle = "dateStampTimeStyle"
         static let stampSize = "dateStampSize"
@@ -111,7 +112,7 @@ final class DaylogSettingsStore {
         static let locationCaptureEnabled = "isLocationCaptureEnabled"
         static let selectedCaptureDuration = "selectedCaptureDuration"
         static let hasSeenCaptureIntroCard = "hasSeenCaptureIntroCard"
-        static let captureOrientationMode = "captureOrientationMode"
+        static let hasSeenCaptureCoach = "hasSeenCaptureCoach"
     }
 
     private enum DefaultValue {
@@ -128,7 +129,7 @@ final class DaylogSettingsStore {
         static let locationCaptureEnabled = false
         static let selectedCaptureDuration = CaptureDurationPolicy.defaultValue
         static let hasSeenCaptureIntroCard = false
-        static let captureOrientationMode = CaptureOrientationMode.portrait
+        static let hasSeenCaptureCoach = false
     }
 
     private let defaults: UserDefaults
@@ -137,13 +138,17 @@ final class DaylogSettingsStore {
         self.defaults = defaults
     }
 
+    /// 撮影・再生・書き出しで使う、いまの日付スタンプ設定。
+    ///
+    /// 世界中で読み違えないよう、日付の並びは地域（または設定）に合わせ、数字は常に0でそろえる。
+    /// 時刻は iPhone の12時間／24時間の設定に従う。
     var dateStampSettings: DateStampSettings {
         get {
             DateStampSettings(
                 isEnabled: stampEnabled,
-                format: stampFormat,
-                isZeroPadded: stampZeroPadded,
-                timeStyle: stampTimeStyle,
+                format: stampDateOrder.rawValue,
+                isZeroPadded: true,
+                timeStyle: DateStampTimeStyle.system(),
                 sizeKey: stampSize,
                 position: stampPosition,
                 elements: stampElements,
@@ -151,10 +156,8 @@ final class DaylogSettingsStore {
             )
         }
         set {
+            // 日付の並び・0そろえ・時刻表記は上の読み取りで決まるので、ここでは保存しない。
             stampEnabled = newValue.isEnabled
-            stampFormat = newValue.format
-            stampZeroPadded = newValue.isZeroPadded
-            stampTimeStyle = newValue.timeStyle
             stampSize = newValue.sizeKey
             stampPosition = newValue.position
             stampElements = newValue.elements
@@ -180,6 +183,23 @@ final class DaylogSettingsStore {
                 : DefaultValue.stampFormat
             defaults.set(normalized, forKey: Key.stampFormat)
         }
+    }
+
+    /// 利用者が選んだ日付の並び。nil なら端末の地域に合わせる。
+    var stampDateOrderOverride: DateStampDateOrder? {
+        get { defaults.string(forKey: Key.stampDateOrder).flatMap(DateStampDateOrder.init(rawValue:)) }
+        set {
+            if let newValue {
+                defaults.set(newValue.rawValue, forKey: Key.stampDateOrder)
+            } else {
+                defaults.removeObject(forKey: Key.stampDateOrder)
+            }
+        }
+    }
+
+    /// 実際に使う日付の並び。
+    var stampDateOrder: DateStampDateOrder {
+        stampDateOrderOverride ?? DateStampDateOrder.regional()
     }
 
     var stampZeroPadded: Bool {
@@ -290,14 +310,11 @@ final class DaylogSettingsStore {
         set { defaults.set(newValue, forKey: Key.hasSeenCaptureIntroCard) }
     }
 
-    var captureOrientationMode: CaptureOrientationMode {
-        get {
-            CaptureOrientationMode.normalized(
-                defaults.string(forKey: Key.captureOrientationMode)
-                    ?? DefaultValue.captureOrientationMode.rawValue
-            )
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.captureOrientationMode) }
+
+    /// 撮影画面での一言（シャッターの案内と、1本目を撮った後の案内）を見たか。
+    var hasSeenCaptureCoach: Bool {
+        get { bool(forKey: Key.hasSeenCaptureCoach, default: DefaultValue.hasSeenCaptureCoach) }
+        set { defaults.set(newValue, forKey: Key.hasSeenCaptureCoach) }
     }
 
     private func bool(forKey key: String, default defaultValue: Bool) -> Bool {

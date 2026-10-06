@@ -3,7 +3,7 @@ import OSLog
 
 enum AppLog {
     // Choose a stable subsystem; fall back if bundle id is nil.
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "FragmentCamera"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "Vlogish"
 
     static let capture = Logger(subsystem: subsystem, category: "capture")
     static let save = Logger(subsystem: subsystem, category: "save")

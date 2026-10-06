@@ -16,14 +16,19 @@ enum VlogClipEditStoreError: LocalizedError {
 
 /// Vlogishの非破壊編集を原本とは別に永続化する。
 ///
-/// 読込に失敗した場合は空データとして扱わず、以後の保存も失敗させる。
-/// 壊れたファイルを無意識に上書きしないための挙動。
+/// 読めないファイル（壊れている・形式が合わない）は上書きせず、別名で退避してから空で始める。
+/// 編集機能そのものが使えなくなることを避けつつ、元のデータは失わない。
 actor VlogClipEditStore {
     private struct Document: Codable {
-        static let currentVersion = 1
+        /// 編集データの形（VlogClipEdit）と必ず一緒に上げる。
+        static var currentVersion: Int { VlogClipEdit.currentVersion }
 
         let version: Int
         let edits: [VlogClipEdit]
+    }
+
+    private struct DocumentHeader: Decodable {
+        let version: Int
     }
 
     private let fileURL: URL
@@ -75,6 +80,16 @@ actor VlogClipEditStore {
 
         do {
             let data = try Data(contentsOf: fileURL)
+            // リリース前の方針: 形式が古い編集データは読まずに破棄し、新しい形式で作り直す。
+            let header = try JSONDecoder().decode(DocumentHeader.self, from: data)
+            guard header.version == Document.currentVersion else {
+                AppLog.save.notice(
+                    "vlog_edit.load.discard_outdated version=\(header.version, privacy: .public)"
+                )
+                editsByIdentifier = [:]
+                hasLoaded = true
+                return
+            }
             let document = try JSONDecoder().decode(Document.self, from: data)
             guard document.version == Document.currentVersion else {
                 throw VlogClipEditStoreError.unsupportedVersion(document.version)
@@ -90,6 +105,16 @@ actor VlogClipEditStore {
             )
             hasLoaded = true
         } catch {
+            AppLog.save.error(
+                "vlog_edit.load.fail reason=\(error.localizedDescription, privacy: .private)"
+            )
+            // 読めないファイルは退避して、空の状態から使えるようにする。
+            if moveUnreadableFileAside() {
+                editsByIdentifier = [:]
+                hasLoaded = true
+                return
+            }
+            // 退避もできない時だけ、上書き事故を防ぐために以後の保存を止める。
             let failure: Error
             if error is VlogClipEditStoreError {
                 failure = error
@@ -97,10 +122,28 @@ actor VlogClipEditStore {
                 failure = VlogClipEditStoreError.unreadableData(error)
             }
             loadFailure = failure
-            AppLog.save.error(
-                "vlog_edit.load.fail reason=\(error.localizedDescription, privacy: .private)"
-            )
             throw failure
+        }
+    }
+
+    /// 読めなかったファイルを `clip-edits.unreadable-<時刻>.json` へ移す。成功したら true。
+    private func moveUnreadableFileAside() -> Bool {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backupURL = fileURL.deletingPathExtension()
+            .appendingPathExtension("unreadable-\(stamp)")
+            .appendingPathExtension("json")
+        do {
+            if FileManager.default.fileExists(atPath: backupURL.path) {
+                try FileManager.default.removeItem(at: backupURL)
+            }
+            try FileManager.default.moveItem(at: fileURL, to: backupURL)
+            AppLog.save.notice("vlog_edit.load.moved_aside")
+            return true
+        } catch {
+            AppLog.save.error(
+                "vlog_edit.load.move_aside.fail reason=\(error.localizedDescription, privacy: .private)"
+            )
+            return false
         }
     }
 

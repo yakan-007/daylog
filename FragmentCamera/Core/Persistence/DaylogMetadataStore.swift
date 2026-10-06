@@ -14,7 +14,8 @@ actor ClipMetadataStore {
     }
 
     func replaceAll(with clips: [ClipSummary]) {
-        clipsByID = Dictionary(uniqueKeysWithValues: clips.map { ($0.assetLocalIdentifier, $0) })
+        // PhotoKit側で同じIDが重複して返っても落ちないよう、後勝ちでまとめる。
+        clipsByID = Dictionary(clips.map { ($0.assetLocalIdentifier, $0) }, uniquingKeysWith: { _, latest in latest })
         persist()
     }
 
@@ -48,12 +49,17 @@ actor ClipMetadataStore {
                   let previewAssetIdentifier = section.clips.first?.assetLocalIdentifier else {
                 return nil
             }
+            let calendar = Calendar.current
+            let offsets = section.clips.map { clip in
+                clip.capturedAt.timeIntervalSince(calendar.startOfDay(for: clip.capturedAt))
+            }
             return DayCalendarSummary(
                 dayKey: key,
                 date: section.date,
                 clipCount: section.clipCount,
                 totalDuration: section.totalDuration,
-                previewAssetIdentifier: previewAssetIdentifier
+                previewAssetIdentifier: previewAssetIdentifier,
+                clipDayOffsets: offsets.sorted()
             )
         }
     }
@@ -93,6 +99,6 @@ actor ClipMetadataStore {
               let clips = try? JSONDecoder().decode([ClipSummary].self, from: data) else {
             return [:]
         }
-        return Dictionary(uniqueKeysWithValues: clips.map { ($0.assetLocalIdentifier, $0) })
+        return Dictionary(clips.map { ($0.assetLocalIdentifier, $0) }, uniquingKeysWith: { _, latest in latest })
     }
 }

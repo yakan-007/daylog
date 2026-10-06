@@ -13,25 +13,18 @@ final class CaptureRotationPolicyTests: XCTestCase {
         )
     }
 
-    func testLandscapeKeepsNearestLandscapeAngle() {
+    func testLandscapeHorizonSnapsToTheClosestPortraitAngle() {
         XCTAssertEqual(
-            CaptureRotationPolicy.angle(closestTo: 2, mode: .landscape),
-            0
-        )
-        XCTAssertEqual(
-            CaptureRotationPolicy.angle(closestTo: 179, mode: .landscape),
-            180
-        )
-    }
-
-    func testModeChangeChoosesClosestAllowedQuarterTurn() {
-        XCTAssertEqual(
-            CaptureRotationPolicy.angle(closestTo: 90, mode: .landscape),
-            0
+            CaptureRotationPolicy.angle(closestTo: 10, mode: .portrait),
+            90
         )
         XCTAssertEqual(
             CaptureRotationPolicy.angle(closestTo: -90, mode: .portrait),
             270
         )
+    }
+
+    func testCaptureIsAlwaysPortrait() {
+        XCTAssertEqual(CaptureOrientationMode.current, .portrait)
     }
 }

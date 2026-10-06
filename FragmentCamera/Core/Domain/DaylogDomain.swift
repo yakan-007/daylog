@@ -54,6 +54,8 @@ struct DayCalendarSummary: Identifiable, Hashable, Sendable {
     let clipCount: Int
     let totalDuration: TimeInterval
     let previewAssetIdentifier: String
+    /// その日の0時からの経過秒。カレンダーで「いつ撮ったか」を描くために使う。
+    var clipDayOffsets: [TimeInterval] = []
 
     var id: String { dayKey }
 }
@@ -108,22 +110,14 @@ enum VideoStorageMode: String, CaseIterable, Codable, Sendable {
 
 }
 
-enum CaptureOrientationMode: String, CaseIterable, Codable, Sendable {
+/// 撮影の向き。Vlogish は縦だけで撮る（1日分をつないだ時に向きが混ざらないように）。
+///
+/// 横撮影を戻す時は、case を足し、`CaptureRotationPolicy` の候補角度と
+/// `VlogishAppDelegate.supportedInterfaceOrientations` を対応させ、設定に選択肢を足す。
+enum CaptureOrientationMode: String, Codable, Sendable {
     case portrait
-    case landscape
 
-    static func normalized(_ rawValue: String) -> CaptureOrientationMode {
-        CaptureOrientationMode(rawValue: rawValue) ?? .portrait
-    }
-
-    var title: String {
-        switch self {
-        case .portrait:
-            return L10n.text("縦")
-        case .landscape:
-            return L10n.text("横")
-        }
-    }
+    static let current: CaptureOrientationMode = .portrait
 }
 
 struct CameraEngineState: Equatable, Sendable {
@@ -132,7 +126,7 @@ struct CameraEngineState: Equatable, Sendable {
     var isTorchAvailable: Bool = false
     var savePhase: CaptureSavePhase = .idle
     var lastSavedAssetLocalIdentifier: String?
-    var saveFailure: DaylogFailure?
+    var saveFailure: VlogishFailure?
     var recoverableCapture: RecoverableCapture?
     var permissionIssue: CameraPermissionIssue?
     var isPermissionAlertPresented: Bool = false

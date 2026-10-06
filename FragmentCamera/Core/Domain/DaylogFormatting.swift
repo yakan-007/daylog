@@ -1,6 +1,6 @@
 import Foundation
 
-enum DaylogFormatters {
+enum VlogishFormatters {
     private static func localizedDateFormatter(template: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)

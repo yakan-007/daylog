@@ -29,7 +29,7 @@ enum DateStampLayerFactory {
             fade.duration = 0.5
             fade.fillMode = .forwards
             fade.isRemovedOnCompletion = false
-            textLayer.add(fade, forKey: "daylog-stamp-fade")
+            textLayer.add(fade, forKey: "vlogish-stamp-fade")
         }
         installAnimationLayers(
             on: videoComposition,
@@ -44,7 +44,8 @@ enum DateStampLayerFactory {
         stamps: [TimedVideoStamp],
         vlogTextOverlays: [TimedVlogTextOverlay] = []
     ) {
-        let textLayers = makeTimedTextLayers(stamps: stamps)
+        let stampLayers: [CALayer] = makeTimedTextLayers(stamps: stamps)
+        let textLayers = stampLayers
             + VlogTextLayerFactory.makeTimedTextLayers(overlays: vlogTextOverlays)
         guard !textLayers.isEmpty else { return }
         installAnimationLayers(
@@ -67,7 +68,7 @@ enum DateStampLayerFactory {
             layer.opacity = 0
             layer.add(
                 visibilityAnimation(for: stamp),
-                forKey: "daylog-stamp-visibility"
+                forKey: "vlogish-stamp-visibility"
             )
             return layer
         }
@@ -152,10 +153,10 @@ enum DateStampLayerFactory {
     private static func alignmentMode(
         for position: DateStampPosition
     ) -> CATextLayerAlignmentMode {
-        switch position {
-        case .topLeading, .bottomLeading: return .left
-        case .topTrailing, .bottomTrailing: return .right
-        case .center: return .center
+        switch position.column {
+        case 0: return .left
+        case 2: return .right
+        default: return .center
         }
     }
 
@@ -191,7 +192,7 @@ enum DateStampLayerFactory {
     private static func installAnimationLayers(
         on videoComposition: AVMutableVideoComposition,
         renderSize: CGSize,
-        textLayers: [CATextLayer]
+        textLayers: [CALayer]
     ) {
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: renderSize)

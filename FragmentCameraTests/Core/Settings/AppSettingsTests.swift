@@ -20,7 +20,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testUsesDocumentedDefaults() {
-        let store = DaylogSettingsStore(defaults: defaults)
+        let store = VlogishSettingsStore(defaults: defaults)
 
         XCTAssertTrue(store.stampEnabled)
         XCTAssertEqual(store.stampFormat, DateStampFormatter.compactDateTime)
@@ -35,7 +35,6 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(store.locationCaptureEnabled)
         XCTAssertEqual(store.selectedCaptureDuration, 3)
         XCTAssertFalse(store.hasSeenCaptureIntroCard)
-        XCTAssertEqual(store.captureOrientationMode, .portrait)
     }
 
     func testNormalizesUnsupportedStoredValuesAtReadTime() {
@@ -45,10 +44,9 @@ final class AppSettingsTests: XCTestCase {
         defaults.set("unsupported", forKey: "dateStampTimeStyle")
         defaults.set("tiny", forKey: "videoStorageMode")
         defaults.set(42.0, forKey: "selectedCaptureDuration")
-        defaults.set("diagonal", forKey: "captureOrientationMode")
         defaults.set("always", forKey: "dateStampRenderingMode")
 
-        let store = DaylogSettingsStore(defaults: defaults)
+        let store = VlogishSettingsStore(defaults: defaults)
 
         XCTAssertEqual(store.stampFormat, DateStampFormatter.compactDateTime)
         XCTAssertEqual(store.stampSize, DateStampStyle.medium)
@@ -56,12 +54,11 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(store.stampTimeStyle, .twentyFourHour)
         XCTAssertEqual(store.videoStorageMode, .standard)
         XCTAssertEqual(store.selectedCaptureDuration, 3)
-        XCTAssertEqual(store.captureOrientationMode, .portrait)
         XCTAssertEqual(store.stampRenderingMode, .playbackOverlay)
     }
 
     func testValuesPersistAcrossStoreInstances() {
-        let first = DaylogSettingsStore(defaults: defaults)
+        let first = VlogishSettingsStore(defaults: defaults)
         first.videoStorageMode = .compact
         first.locationCaptureEnabled = true
         first.selectedCaptureDuration = 5
@@ -70,9 +67,8 @@ final class AppSettingsTests: XCTestCase {
         first.stampElements = [.time, .place]
         first.stampFadesOut = false
         first.stampRenderingMode = .burnOnCapture
-        first.captureOrientationMode = .landscape
 
-        let second = DaylogSettingsStore(defaults: defaults)
+        let second = VlogishSettingsStore(defaults: defaults)
 
         XCTAssertEqual(second.videoStorageMode, .compact)
         XCTAssertTrue(second.locationCaptureEnabled)
@@ -82,15 +78,14 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(second.stampElements, [.time, .place])
         XCTAssertFalse(second.stampFadesOut)
         XCTAssertEqual(second.stampRenderingMode, .burnOnCapture)
-        XCTAssertEqual(second.captureOrientationMode, .landscape)
     }
 
     func testEveryDurationShownByCaptureUIPersists() {
         for duration in CaptureDurationPolicy.options {
-            let first = DaylogSettingsStore(defaults: defaults)
+            let first = VlogishSettingsStore(defaults: defaults)
             first.selectedCaptureDuration = duration
 
-            let second = DaylogSettingsStore(defaults: defaults)
+            let second = VlogishSettingsStore(defaults: defaults)
             XCTAssertEqual(second.selectedCaptureDuration, duration)
         }
     }
@@ -271,7 +266,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testPerVideoOverrideCanHideWholeStamp() {
-        let store = DaylogSettingsStore(defaults: defaults)
+        let store = VlogishSettingsStore(defaults: defaults)
         let resolved = store.dateStampSettings.applying(
             VideoStampVisibilityOverride(
                 hidesStamp: true,
@@ -282,4 +277,20 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(resolved.isEnabled)
     }
 
+
+    func testDateOrderIsAutomaticUntilChosenAndStampsAlwaysZeroPad() {
+        let store = VlogishSettingsStore(defaults: defaults)
+        XCTAssertNil(store.stampDateOrderOverride)
+        XCTAssertEqual(store.stampDateOrder, DateStampDateOrder.regional())
+
+        store.stampDateOrderOverride = .dayMonthYear
+        let second = VlogishSettingsStore(defaults: defaults)
+        XCTAssertEqual(second.stampDateOrder, .dayMonthYear)
+        XCTAssertEqual(second.dateStampSettings.format, DateStampDateOrder.dayMonthYear.rawValue)
+        XCTAssertTrue(second.dateStampSettings.isZeroPadded)
+        XCTAssertEqual(second.dateStampSettings.timeStyle, DateStampTimeStyle.system())
+
+        second.stampDateOrderOverride = nil
+        XCTAssertEqual(VlogishSettingsStore(defaults: defaults).stampDateOrder, DateStampDateOrder.regional())
+    }
 }

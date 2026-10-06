@@ -2,9 +2,9 @@ import AVFoundation
 import XCTest
 @testable import FragmentCamera
 
-final class DaylogFailureTests: XCTestCase {
+final class VlogishFailureTests: XCTestCase {
     func testPhotoPermissionMapsToSettingsRecovery() {
-        let failure = DaylogFailureMapper.captureSaveFailure(
+        let failure = VlogishFailureMapper.captureSaveFailure(
             from: AssetLibraryWriterError.permissionDenied
         )
 
@@ -19,17 +19,17 @@ final class DaylogFailureTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            DaylogFailureMapper.captureSaveFailure(from: error),
+            VlogishFailureMapper.captureSaveFailure(from: error),
             .storageUnavailable
         )
         XCTAssertEqual(
-            DaylogFailureMapper.exportFailure(from: error),
+            VlogishFailureMapper.exportFailure(from: error),
             .storageUnavailable
         )
     }
 
     func testPhotoKitExportFailureHasNetworkGuidance() {
-        let failure = DaylogFailureMapper.exportFailure(
+        let failure = VlogishFailureMapper.exportFailure(
             from: DayVideoExporterError.photoKitUnavailable
         )
 
@@ -38,7 +38,7 @@ final class DaylogFailureTests: XCTestCase {
     }
 
     func testMissingRecordedAudioIsReportedWithoutSavingSilentVideo() {
-        let failure = DaylogFailureMapper.captureSaveFailure(
+        let failure = VlogishFailureMapper.captureSaveFailure(
             from: VideoPostProcessError.audioTrackMissing
         )
 
@@ -49,7 +49,7 @@ final class DaylogFailureTests: XCTestCase {
 
     func testOtherPostProcessErrorsMapToProcessingFailure() {
         XCTAssertEqual(
-            DaylogFailureMapper.captureSaveFailure(
+            VlogishFailureMapper.captureSaveFailure(
                 from: VideoPostProcessError.videoTrackMissing
             ),
             .processingFailed
@@ -57,7 +57,7 @@ final class DaylogFailureTests: XCTestCase {
     }
 
     func testExportCancellationHasRetryGuidance() {
-        let failure = DaylogFailureMapper.exportFailure(
+        let failure = VlogishFailureMapper.exportFailure(
             from: DayVideoExporterError.cancelled
         )
 
@@ -67,13 +67,13 @@ final class DaylogFailureTests: XCTestCase {
 
     func testUnsupportedExporterHasSpecificFailure() {
         XCTAssertEqual(
-            DaylogFailureMapper.exportFailure(from: MediaExporterError.unsupportedOutputType),
+            VlogishFailureMapper.exportFailure(from: MediaExporterError.unsupportedOutputType),
             .exportUnsupported
         )
     }
 
     func testLibraryPermissionFailureOpensSettingsRecovery() {
-        let failure = DaylogFailureMapper.libraryFailure(
+        let failure = VlogishFailureMapper.libraryFailure(
             from: PhotoLibraryRepositoryError.permissionDenied
         )
 
@@ -87,7 +87,7 @@ final class DaylogFailureTests: XCTestCase {
             code: AVError.Code.diskFull.rawValue
         )
 
-        XCTAssertEqual(DaylogFailureMapper.exportFailure(from: error), .storageUnavailable)
+        XCTAssertEqual(VlogishFailureMapper.exportFailure(from: error), .storageUnavailable)
     }
 
     func testStorageFailureDetailExplainsTemporaryWorkingSpace() {
@@ -96,7 +96,7 @@ final class DaylogFailureTests: XCTestCase {
             code: NSFileWriteOutOfSpaceError
         )
 
-        let detail = DaylogFailureMapper.exportFailureDetail(from: error)
+        let detail = VlogishFailureMapper.exportFailureDetail(from: error)
 
         XCTAssertTrue(detail.contains("空き容量が不足"))
         XCTAssertTrue(detail.contains("作業用ファイル"))
@@ -114,13 +114,13 @@ final class DaylogFailureTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            DaylogFailureMapper.exportFailure(from: wrapper),
+            VlogishFailureMapper.exportFailure(from: wrapper),
             .storageUnavailable
         )
     }
 
     func testAssetCountMismatchDetailKeepsExpectedAndActualCounts() {
-        let detail = DaylogFailureMapper.exportFailureDetail(
+        let detail = VlogishFailureMapper.exportFailureDetail(
             from: DayVideoExporterError.assetCountMismatch(expected: 87, actual: 84)
         )
 
@@ -133,11 +133,11 @@ final class DaylogFailureTests: XCTestCase {
         let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
 
         XCTAssertEqual(
-            DaylogFailureMapper.exportFailure(from: error),
+            VlogishFailureMapper.exportFailure(from: error),
             .libraryAssetUnavailable
         )
         XCTAssertTrue(
-            DaylogFailureMapper.exportFailureDetail(from: error).contains("iCloud")
+            VlogishFailureMapper.exportFailureDetail(from: error).contains("iCloud")
         )
     }
 }

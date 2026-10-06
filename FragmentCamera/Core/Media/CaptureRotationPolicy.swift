@@ -10,8 +10,6 @@ enum CaptureRotationPolicy {
         let candidates: [CGFloat] = switch mode {
         case .portrait:
             [90, 270]
-        case .landscape:
-            [0, 180]
         }
         return candidates.min { lhs, rhs in
             circularDistance(from: normalized, to: lhs)

@@ -292,7 +292,7 @@ final class VideoPostProcessPipeline {
             videoComposition: videoComposition,
             encodingPolicy: encodingPolicy,
             outputPrefix: "processed",
-            backgroundTaskName: "DaylogVideoSave",
+            backgroundTaskName: "VlogishVideoSave",
             requiresAudioTrack: true
         )
     }
