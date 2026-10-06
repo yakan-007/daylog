@@ -134,8 +134,8 @@ struct VlogishLibrarySheetView: View {
             onClose: closeLibrary,
             onExpand: onExpand,
             onShareExport: viewModel.shareCompletedExport,
-            onDeleteClip: viewModel.deleteClip,
-            onDismissExport: viewModel.dismissCompletedExport
+            onDismissExport: viewModel.dismissCompletedExport,
+            onDeleteClip: viewModel.deleteClip
         )
     }
 
