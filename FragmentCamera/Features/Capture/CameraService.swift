@@ -300,14 +300,25 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             state.savePhase = .idle
             state.saveFailure = nil
             state.isRecording = true
-            if let d = self.currentPlannedDuration {
-                self.recordingTimer = Timer.scheduledTimer(
-                    withTimeInterval: d,
-                    repeats: false
-                ) { [weak self] _ in
-                    self?.stopRecording()
-                }
+        }
+        scheduleAutoStop()
+    }
+
+    /// 決めた秒数で自動的に止めるタイマー。録画開始の通知は別スレッドから来るので、メインで仕掛ける。
+    private func scheduleAutoStop() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.scheduleAutoStop()
             }
+            return
+        }
+        guard let duration = currentPlannedDuration else { return }
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(
+            withTimeInterval: duration,
+            repeats: false
+        ) { [weak self] _ in
+            self?.stopRecording()
         }
     }
 
