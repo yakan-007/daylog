@@ -792,7 +792,7 @@ struct VideoStampEditorView: View {
                     onSelect: viewModel.setPosition
                 )
 
-                Toggle(isOn: Binding(get: { viewModel.block.fadesOut }, set: viewModel.setFadesOut)) {
+                Toggle(isOn: Binding(get: { viewModel.block.fadesOut }, set: { viewModel.setFadesOut($0) })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.text("2秒後にフェードアウト"))
                             .rollText(13, .medium)
@@ -874,7 +874,7 @@ struct VideoStampEditorView: View {
                 if viewModel.block.showsPlace {
                     TextField(L10n.text("場所の名前"), text: Binding(
                         get: { viewModel.block.placeName },
-                        set: viewModel.setPlaceName
+                        set: { viewModel.setPlaceName($0) }
                     ))
                     .font(.system(size: 20, weight: .semibold, design: .monospaced))
                     .multilineTextAlignment(.center)
@@ -908,7 +908,7 @@ struct VideoStampEditorView: View {
     private var captionField: some View {
         TextField(
             L10n.text("ひとこと（例：東京に到着！！）"),
-            text: Binding(get: { viewModel.block.caption }, set: viewModel.setCaption),
+            text: Binding(get: { viewModel.block.caption }, set: { viewModel.setCaption($0) }),
             axis: .vertical
         )
         .lineLimit(1...3)
@@ -1112,4 +1112,3 @@ private final class VideoEditorPlayerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
-

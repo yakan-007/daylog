@@ -105,7 +105,8 @@ struct VideoPostProcessContext: Codable, Equatable, Sendable {
     }
 }
 
-final class VideoPostProcessPipeline {
+/// 共有する可変状態を持たず、書き出しごとの状態はメソッド内に閉じる。
+final class VideoPostProcessPipeline: @unchecked Sendable {
     private let temporaryFileStore: TemporaryFileStore
     private let mediaExporter: MediaExporter
 

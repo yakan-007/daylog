@@ -55,6 +55,8 @@ enum LibraryExportProgressMapper {
 /// Shared preparation pipeline for both a whole day and an individual clip.
 /// The caller is responsible only for choosing and ordering the source items;
 /// settings, stamp recipes, place names, and rendering are resolved here once.
+/// ライブラリ画面の設定スナップショットと書き出し開始をMainActorで直列化する。
+@MainActor
 final class LibraryVideoExportService {
     private let exporter: DayVideoExporter
     private let stampContextService: VideoStampContextService

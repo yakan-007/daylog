@@ -1,6 +1,6 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
-import Photos
+@preconcurrency import Photos
 
 struct EditableVideoStamp: Sendable {
     let context: VideoPostProcessContext
@@ -22,6 +22,8 @@ struct EditableVideoStamp: Sendable {
     let requiresVideoRegeneration: Bool
 }
 
+/// 編集画面とライブラリから使う窓口。画面状態とPhotoKitの受け渡しをMainActorに揃える。
+@MainActor
 final class VideoStampEditingService {
     private let postProcessPipeline: VideoPostProcessPipeline
     private let temporaryFileStore: TemporaryFileStore

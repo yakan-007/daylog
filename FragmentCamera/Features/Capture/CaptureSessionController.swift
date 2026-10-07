@@ -7,7 +7,7 @@ enum CaptureSessionConfigurationResult {
     case unavailable
 }
 
-enum CaptureSessionOperationError: LocalizedError {
+enum CaptureSessionOperationError: LocalizedError, Sendable {
     case recordingUnavailable
     case audioUnavailable
     case cameraSwitchUnavailable
@@ -29,7 +29,8 @@ enum CaptureSessionOperationError: LocalizedError {
 
 /// AVCaptureSession、入出力、端末操作を所有する低レベル境界。
 /// 録画状態や保存状態は持たず、CameraServiceへUI状態を漏らさない。
-/// 端末操作は専用キュー、共有する値はロックで守っているので、スレッドをまたいで渡してよい。
+/// AVFoundationの非Sendable型を所有する境界。セッション変更は専用キューへ閉じ込め、
+/// UIと共有する端末・回転情報はロック越しに値だけ読む。
 final class CaptureSessionController: @unchecked Sendable {
     let session = AVCaptureSession()
     lazy var previewLayer = AVCaptureVideoPreviewLayer(session: session)
@@ -42,6 +43,7 @@ final class CaptureSessionController: @unchecked Sendable {
     private let dataOutputQueue = DispatchQueue(label: "CaptureSessionController.DataOutput")
     private let sessionQueue = DispatchQueue(label: "CaptureSessionController.Session")
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private let rotationLock = NSLock()
     private let orientationLock = NSLock()
     private var captureOrientationMode = CaptureOrientationMode.portrait
     private var isConfigured = false
@@ -78,10 +80,10 @@ final class CaptureSessionController: @unchecked Sendable {
             guard session.canAddInput(input) else { return .unavailable }
             session.addInput(input)
             videoInput = input
-            rotationCoordinator = AVCaptureDevice.RotationCoordinator(
+            setRotationCoordinator(AVCaptureDevice.RotationCoordinator(
                 device: videoDevice,
                 previewLayer: previewLayer
-            )
+            ))
             DispatchQueue.main.async { [weak self] in
                 self?.refreshPreviewRotation()
             }
@@ -169,12 +171,12 @@ final class CaptureSessionController: @unchecked Sendable {
     func startRecording(
         to outputURL: URL,
         delegate: AVCaptureFileOutputRecordingDelegate,
-        completion: @escaping (Result<Void, Error>) -> Void
+        completion: @escaping @MainActor @Sendable (Result<Void, CaptureSessionOperationError>) -> Void
     ) {
         #if targetEnvironment(simulator)
-        completion(.success(()))
+        Task { @MainActor in completion(.success(())) }
         #else
-        sessionQueue.async {
+        sessionQueue.async { [self] in
             guard !self.movieOutput.isRecording,
                   let connection = self.movieOutput.connection(with: .video) else {
                 DispatchQueue.main.async {
@@ -190,11 +192,7 @@ final class CaptureSessionController: @unchecked Sendable {
                 }
                 return
             }
-            if let coordinator = self.rotationCoordinator {
-                let angle = CaptureRotationPolicy.angle(
-                    closestTo: coordinator.videoRotationAngleForHorizonLevelCapture,
-                    mode: self.currentCaptureOrientationMode()
-                )
+            if let angle = self.captureRotationAngle() {
                 if connection.isVideoRotationAngleSupported(angle) {
                     connection.videoRotationAngle = angle
                 }
@@ -216,12 +214,14 @@ final class CaptureSessionController: @unchecked Sendable {
         #endif
     }
 
-    func switchCamera(completion: @escaping (Result<Bool, Error>) -> Void) {
+    func switchCamera(
+        completion: @escaping @MainActor @Sendable (Result<Bool, CaptureSessionOperationError>) -> Void
+    ) {
         #if targetEnvironment(simulator)
         AppLog.capture.debug("SIMULATOR: Camera switch requested. No action taken.")
-        completion(.success(false))
+        Task { @MainActor in completion(.success(false)) }
         #else
-        sessionQueue.async {
+        sessionQueue.async { [self] in
             self.session.beginConfiguration()
             defer { self.session.commitConfiguration() }
             guard let currentInput = self.videoInput else {
@@ -251,12 +251,12 @@ final class CaptureSessionController: @unchecked Sendable {
             self.session.addInput(newInput)
             self.videoInput = newInput
             self.setCurrentDevice(newDevice)
-            self.rotationCoordinator = AVCaptureDevice.RotationCoordinator(
+            self.setRotationCoordinator(AVCaptureDevice.RotationCoordinator(
                 device: newDevice,
                 previewLayer: self.previewLayer
-            )
-            DispatchQueue.main.async { [weak self] in
-                self?.refreshPreviewRotation()
+            ))
+            DispatchQueue.main.async { [self] in
+                refreshPreviewRotation()
             }
             self.configureContinuousCapture(on: newDevice)
             self.configureVideoConnection(for: newPosition)
@@ -388,6 +388,7 @@ final class CaptureSessionController: @unchecked Sendable {
         #endif
     }
 
+    @MainActor
     func setCaptureOrientation(_ mode: CaptureOrientationMode) {
         orientationLock.lock()
         captureOrientationMode = mode
@@ -395,39 +396,28 @@ final class CaptureSessionController: @unchecked Sendable {
         refreshPreviewRotation()
     }
 
+    @MainActor
     func refreshPreviewRotation() {
         #if !targetEnvironment(simulator)
-        let update = { [weak self] in
-            guard let self,
-                  let coordinator = self.rotationCoordinator,
-                  let connection = self.previewLayer.connection else { return }
-            let angle = CaptureRotationPolicy.angle(
-                closestTo: coordinator.videoRotationAngleForHorizonLevelPreview,
-                mode: self.currentCaptureOrientationMode()
-            )
-            if connection.isVideoRotationAngleSupported(angle) {
-                connection.videoRotationAngle = angle
-            }
-        }
-        if Thread.isMainThread {
-            update()
-        } else {
-            DispatchQueue.main.async(execute: update)
+        guard let angle = previewRotationAngle(),
+              let connection = previewLayer.connection else { return }
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
         }
         #endif
     }
 
     func setTorch(
         enabled: Bool,
-        completion: @escaping (Result<Bool, Error>) -> Void
+        completion: @escaping @MainActor @Sendable (Result<Bool, CaptureSessionOperationError>) -> Void
     ) {
         #if targetEnvironment(simulator)
         AppLog.capture.debug(
             "SIMULATOR: Torch toggle to \(enabled, privacy: .public) ignored."
         )
-        completion(.success(false))
+        Task { @MainActor in completion(.success(false)) }
         #else
-        sessionQueue.async {
+        sessionQueue.async { [self] in
             guard let device = self.currentDevice(), device.hasTorch else {
                 DispatchQueue.main.async {
                     completion(.failure(CaptureSessionOperationError.torchUnavailable))
@@ -449,7 +439,7 @@ final class CaptureSessionController: @unchecked Sendable {
             } catch {
                 AppLog.capture.error("Failed to set torch mode: \(error.localizedDescription)")
                 DispatchQueue.main.async {
-                    completion(.failure(error))
+                    completion(.failure(.torchUnavailable))
                 }
             }
         }
@@ -531,6 +521,32 @@ final class CaptureSessionController: @unchecked Sendable {
         orientationLock.lock()
         defer { orientationLock.unlock() }
         return captureOrientationMode
+    }
+
+    private func setRotationCoordinator(_ coordinator: AVCaptureDevice.RotationCoordinator?) {
+        rotationLock.lock()
+        rotationCoordinator = coordinator
+        rotationLock.unlock()
+    }
+
+    private func captureRotationAngle() -> CGFloat? {
+        rotationLock.lock()
+        defer { rotationLock.unlock() }
+        guard let rotationCoordinator else { return nil }
+        return CaptureRotationPolicy.angle(
+            closestTo: rotationCoordinator.videoRotationAngleForHorizonLevelCapture,
+            mode: currentCaptureOrientationMode()
+        )
+    }
+
+    private func previewRotationAngle() -> CGFloat? {
+        rotationLock.lock()
+        defer { rotationLock.unlock() }
+        guard let rotationCoordinator else { return nil }
+        return CaptureRotationPolicy.angle(
+            closestTo: rotationCoordinator.videoRotationAngleForHorizonLevelPreview,
+            mode: currentCaptureOrientationMode()
+        )
     }
 
     private func configureContinuousCapture(on device: AVCaptureDevice) {

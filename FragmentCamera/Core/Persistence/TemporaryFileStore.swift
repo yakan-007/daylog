@@ -13,7 +13,8 @@ enum TemporaryFileStoreError: LocalizedError {
 
 /// 撮影・変換・共有で使う一時ファイルの生成と破棄を一元管理する。
 /// Vlogish 専用ディレクトリだけを対象にするため、他機能の一時ファイルを誤って消さない。
-final class TemporaryFileStore {
+/// 保持値は不変で、各操作は一意なUUIDのパスかFileManagerの原子的な操作だけを使う。
+final class TemporaryFileStore: @unchecked Sendable {
     private let fileManager: FileManager
     private let rootURL: URL
     private let now: () -> Date

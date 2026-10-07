@@ -2,6 +2,9 @@ import CoreLocation
 import Foundation
 import OSLog
 
+/// 撮影中の位置情報と設定値をまとめるUI側の窓口。
+/// CameraServiceと同じMainActorに閉じ込め、保存中の中断操作と競合させない。
+@MainActor
 final class CaptureSaveCoordinator {
     private let pipeline: CaptureSavePipeline
     private let settingsStore: VlogishSettingsStore

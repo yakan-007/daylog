@@ -126,7 +126,9 @@ final class VideoStampContextServiceTests: XCTestCase {
             settings: makeSettings(elements: [.date, .place]),
             storageMode: .standard,
             maximumConcurrentResolutions: 4,
-            progress: progress.record
+            progress: { completed, total in
+                progress.record(completed: completed, total: total)
+            }
         )
 
         XCTAssertEqual(

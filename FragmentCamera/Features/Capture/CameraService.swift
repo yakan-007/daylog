@@ -49,7 +49,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     var currentExposureBias: Float { captureSession.currentExposureBias }
 
     init(
-        permissionService: CameraPermissionService = CameraPermissionService(),
+        permissionService: CameraPermissionService? = nil,
         postProcessPipeline: VideoPostProcessPipeline = VideoPostProcessPipeline(),
         assetLibraryWriter: AssetLibraryWriter = AssetLibraryWriter(albumName: AppIdentity.photoAlbumName),
         settingsStore: VlogishSettingsStore = VlogishSettingsStore(),
@@ -59,7 +59,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         stampRecipeStore: VideoStampRecipeStore = VideoStampRecipeStore(),
         placeNameResolver: any PlaceNameResolving = PlaceNameResolver()
     ) {
-        self.permissionService = permissionService
+        self.permissionService = permissionService ?? CameraPermissionService()
         self.settingsStore = settingsStore
         self.temporaryFileStore = temporaryFileStore
         self.captureRecoveryStore = captureRecoveryStore
@@ -253,8 +253,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                     state.isRecording = false
                     state.savePhase = .idle
                 }
-                if let operationError = error as? CaptureSessionOperationError,
-                   case .audioUnavailable = operationError {
+                if case .audioUnavailable = error {
                     self.reportSaveFailure(.audioRecordingUnavailable)
                 } else {
                     self.reportSaveFailure(.recordingFailed)
@@ -373,7 +372,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
 
     func setTorch(
         on: Bool,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping @MainActor @Sendable (Bool) -> Void
     ) {
         captureSession.setTorch(enabled: on) { result in
             switch result {

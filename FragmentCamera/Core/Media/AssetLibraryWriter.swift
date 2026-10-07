@@ -24,7 +24,30 @@ struct EditableAssetSaveResult: Sendable {
     let didAttachRenderedContent: Bool
 }
 
-final class AssetLibraryWriter {
+private final class PhotoChangeState<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
+
+    func update(_ body: (inout Value) -> Void) {
+        lock.withLock { body(&value) }
+    }
+
+    func snapshot() -> Value {
+        lock.withLock { value }
+    }
+}
+
+private struct EditablePhotoChangeState: Sendable {
+    var identifier: String?
+    var contentPreparationErrorDescription: String?
+}
+
+/// 設定値は不変。PhotoKitの複数コールバック間で共有する結果はPhotoChangeStateで同期する。
+final class AssetLibraryWriter: @unchecked Sendable {
     private let albumName: String
     private let temporaryFileStore: TemporaryFileStore
 
@@ -126,11 +149,12 @@ final class AssetLibraryWriter {
         if let album = collections.firstObject { return album }
 
         let placeholder: PHObjectPlaceholder = try await withCheckedThrowingContinuation { continuation in
-            var localPlaceholder: PHObjectPlaceholder?
+            let state = PhotoChangeState<PHObjectPlaceholder?>(nil)
             PHPhotoLibrary.shared().performChanges({
                 let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: self.albumName)
-                localPlaceholder = request.placeholderForCreatedAssetCollection
+                state.update { $0 = request.placeholderForCreatedAssetCollection }
             }) { success, error in
+                let localPlaceholder = state.snapshot()
                 if success, let localPlaceholder {
                     continuation.resume(returning: localPlaceholder)
                 } else {
@@ -154,8 +178,7 @@ final class AssetLibraryWriter {
         album: PHAssetCollection
     ) async throws -> EditableAssetSaveResult {
         try await withCheckedThrowingContinuation { continuation in
-            var createdAssetIdentifier: String?
-            var contentPreparationError: Error?
+            let state = PhotoChangeState(EditablePhotoChangeState())
             PHPhotoLibrary.shared().performChanges({
                 guard let assetRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(
                     atFileURL: originalURL
@@ -163,7 +186,7 @@ final class AssetLibraryWriter {
                 assetRequest.location = location
                 guard let assetPlaceholder = assetRequest.placeholderForCreatedAsset,
                       let albumChangeRequest = PHAssetCollectionChangeRequest(for: album) else { return }
-                createdAssetIdentifier = assetPlaceholder.localIdentifier
+                state.update { $0.identifier = assetPlaceholder.localIdentifier }
                 let editingOutput = PHContentEditingOutput(
                     placeholderForCreatedAsset: assetPlaceholder
                 )
@@ -182,19 +205,22 @@ final class AssetLibraryWriter {
                     )
                     assetRequest.contentEditingOutput = editingOutput
                 } catch {
-                    contentPreparationError = error
+                    state.update {
+                        $0.contentPreparationErrorDescription = error.localizedDescription
+                    }
                 }
                 albumChangeRequest.addAssets([assetPlaceholder] as NSArray)
             }) { success, error in
-                if success, let createdAssetIdentifier {
-                    if let contentPreparationError {
+                let result = state.snapshot()
+                if success, let createdAssetIdentifier = result.identifier {
+                    if let errorDescription = result.contentPreparationErrorDescription {
                         AppLog.save.warning(
-                            "save.adjustment.fallback reason=\(contentPreparationError.localizedDescription, privacy: .private)"
+                            "save.adjustment.fallback reason=\(errorDescription, privacy: .private)"
                         )
                     }
                     continuation.resume(returning: EditableAssetSaveResult(
                         identifier: createdAssetIdentifier,
-                        didAttachRenderedContent: contentPreparationError == nil
+                        didAttachRenderedContent: result.contentPreparationErrorDescription == nil
                     ))
                 } else {
                     continuation.resume(throwing: error ?? AssetLibraryWriterError.saveFailed("Unknown"))
@@ -209,7 +235,7 @@ final class AssetLibraryWriter {
         album: PHAssetCollection
     ) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
-            var createdAssetIdentifier: String?
+            let state = PhotoChangeState<String?>(nil)
             PHPhotoLibrary.shared().performChanges({
                 guard let assetRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(
                     atFileURL: url
@@ -219,9 +245,10 @@ final class AssetLibraryWriter {
                       let albumChangeRequest = PHAssetCollectionChangeRequest(for: album) else {
                     return
                 }
-                createdAssetIdentifier = assetPlaceholder.localIdentifier
+                state.update { $0 = assetPlaceholder.localIdentifier }
                 albumChangeRequest.addAssets([assetPlaceholder] as NSArray)
             }) { success, error in
+                let createdAssetIdentifier = state.snapshot()
                 if success, let createdAssetIdentifier {
                     continuation.resume(returning: createdAssetIdentifier)
                 } else {

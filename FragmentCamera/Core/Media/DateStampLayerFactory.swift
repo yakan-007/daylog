@@ -165,7 +165,7 @@ enum DateStampLayerFactory {
         textLayer.shadowOpacity = 0.6
         textLayer.shadowRadius = 2
         textLayer.shadowOffset = CGSize(width: 0, height: 1)
-        textLayer.contentsScale = UIScreen.main.scale
+        textLayer.contentsScale = 2
         // SwiftUI/DateStampStyleは左上原点、動画合成のCore Animationは左下原点。
         // 中央以外はY座標を反転しないと「右下」が「右上」へ書き出される。
         let compositorFrame = CGRect(
@@ -232,7 +232,7 @@ enum DateStampLayerFactory {
         layer.shadowOpacity = 0.35
         layer.shadowRadius = 2
         layer.shadowOffset = CGSize(width: 0, height: 1)
-        layer.contentsScale = UIScreen.main.scale
+        layer.contentsScale = 2
         layer.opacity = 0
 
         let fadeIn = CABasicAnimation(keyPath: "opacity")

@@ -33,6 +33,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     private var observationTask: Task<Void, Never>?
     private var hasLoaded = false
     private var refreshInFlight = false
+    /// 実行中の更新。後から来た呼び出しはポーリングせず、このTaskの完了へ合流する。
+    private var refreshTask: Task<Void, Never>?
     /// 更新中に届いた更新要求。捨てずに、今の更新が終わったらもう一度だけ走らせる。
     private var pendingRefresh: (requestAuthorization: Bool, reportsFailure: Bool)?
     private var isLoadingMore = false
@@ -60,6 +62,7 @@ final class LibraryFeatureViewModel: ObservableObject {
 
     deinit {
         observationTask?.cancel()
+        refreshTask?.cancel()
         exportTask?.cancel()
     }
 
@@ -124,21 +127,38 @@ final class LibraryFeatureViewModel: ObservableObject {
         requestAuthorizationIfNeeded: Bool,
         reportsFailure: Bool
     ) async {
-        guard !refreshInFlight else {
+        if let refreshTask {
             // 削除の通知と削除後の手動更新が重なっても、最新の状態を必ず読み直す。
             pendingRefresh = (
                 requestAuthorization: (pendingRefresh?.requestAuthorization ?? false)
                     || requestAuthorizationIfNeeded,
                 reportsFailure: (pendingRefresh?.reportsFailure ?? false) || reportsFailure
             )
-            await waitForRefreshToFinish()
+            await refreshTask.value
             return
         }
+
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runRefreshLoop(
+                requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
+                reportsFailure: reportsFailure
+            )
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    private func runRefreshLoop(
+        requestAuthorizationIfNeeded: Bool,
+        reportsFailure: Bool
+    ) async {
         refreshInFlight = true
         isRefreshing = true
         defer {
             isRefreshing = false
             refreshInFlight = false
+            refreshTask = nil
         }
 
         var request = (
@@ -199,8 +219,8 @@ final class LibraryFeatureViewModel: ObservableObject {
     }
 
     func handleCaptureSaved(preferredAssetIdentifier: String?) async {
-        if preferredAssetIdentifier != nil {
-            await waitForRefreshToFinish()
+        if preferredAssetIdentifier != nil, let refreshTask {
+            await refreshTask.value
         }
         if let preferredAssetIdentifier,
            let updated = await useCase.registerSavedClip(
@@ -221,12 +241,6 @@ final class LibraryFeatureViewModel: ObservableObject {
         refreshLatestThumbnail(
             preferredAssetIdentifier: sections.first?.clips.first?.assetLocalIdentifier
         )
-    }
-
-    private func waitForRefreshToFinish() async {
-        while refreshInFlight {
-            try? await Task.sleep(for: .milliseconds(25))
-        }
     }
 
     /// 撮影画面のミニ時間軸用。最新の日の撮影時刻を渡し、「今日」かどうかは描画側で判定する

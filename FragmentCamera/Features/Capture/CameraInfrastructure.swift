@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreLocation
 
 struct CaptureStampSaveDecision: Equatable {
@@ -25,75 +25,53 @@ enum CaptureStampSavePolicy {
     }
 }
 
+@MainActor
 final class CameraPermissionService {
     func preparePermissions(
-        onAuthorized: @escaping () -> Void,
-        onDenied: @escaping (String, String) -> Void
+        onAuthorized: @escaping @MainActor @Sendable () -> Void,
+        onDenied: @escaping @MainActor @Sendable (String, String) -> Void
     ) {
-        func reportDenied(title: String, message: String) {
-            DispatchQueue.main.async {
-                onDenied(title, message)
-            }
-        }
-
-        #if targetEnvironment(simulator)
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            #if targetEnvironment(simulator)
             onAuthorized()
-        }
-        #else
-        func requestMicrophone() {
-            let status = AVCaptureDevice.authorizationStatus(for: .audio)
-            switch status {
-            case .authorized:
-                DispatchQueue.main.async { onAuthorized() }
-            case .notDetermined:
-                AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    if granted {
-                        DispatchQueue.main.async { onAuthorized() }
-                    } else {
-                        reportDenied(
-                            title: L10n.text("マイクへのアクセスが必要です"),
-                            message: L10n.text("動画と周囲の音を残すため、設定アプリからマイクへのアクセスを許可してください。")
-                        )
-                    }
-                }
-            default:
-                reportDenied(
-                    title: L10n.text("マイクへのアクセスが必要です"),
-                    message: L10n.text("動画と周囲の音を残すため、設定アプリからマイクへのアクセスを許可してください。")
+            #else
+            guard await Self.isAuthorized(for: .video) else {
+                onDenied(
+                    L10n.text("カメラへのアクセスが必要です"),
+                    L10n.text("動画を撮影するため、設定アプリからカメラへのアクセスを許可してください。")
                 )
+                return
             }
+            guard await Self.isAuthorized(for: .audio) else {
+                onDenied(
+                    L10n.text("マイクへのアクセスが必要です"),
+                    L10n.text("動画と周囲の音を残すため、設定アプリからマイクへのアクセスを許可してください。")
+                )
+                return
+            }
+            onAuthorized()
+            #endif
         }
+    }
 
-        func requestCameraThenMicrophone() {
-            let videoAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
-            switch videoAuthStatus {
-            case .authorized:
-                requestMicrophone()
-            case .notDetermined:
-                AVCaptureDevice.requestAccess(for: .video) { granted in
-                    if granted {
-                        requestMicrophone()
-                    } else {
-                        reportDenied(
-                            title: L10n.text("カメラへのアクセスが必要です"),
-                            message: L10n.text("動画を撮影するため、設定アプリからカメラへのアクセスを許可してください。")
-                        )
-                    }
+    nonisolated private static func isAuthorized(for mediaType: AVMediaType) async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                AVCaptureDevice.requestAccess(for: mediaType) { granted in
+                    continuation.resume(returning: granted)
                 }
-            default:
-                reportDenied(
-                    title: L10n.text("カメラへのアクセスが必要です"),
-                    message: L10n.text("動画を撮影するため、設定アプリからカメラへのアクセスを許可してください。")
-                )
             }
+        default:
+            return false
         }
-        requestCameraThenMicrophone()
-        #endif
     }
 }
 
-final class CaptureSavePipeline {
+/// 変換・写真保存・レシピ保存を直列化し、非SendableなAVFoundation境界を外へ漏らさない。
+actor CaptureSavePipeline {
     private let postProcessPipeline: VideoPostProcessPipeline
     private let assetLibraryWriter: AssetLibraryWriter
     private let stampRecipeStore: VideoStampRecipeStore

@@ -1,27 +1,42 @@
 import XCTest
 
+/// XCTestの同期setUp/tearDownから、UI操作をMainActorへ戻すための境界。
+final class UIActorBox<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
+}
+
+@MainActor
 final class FragmentCameraSmokeUITests: XCTestCase {
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        XCUIDevice.shared.orientation = .portrait
+        let isolatedSelf = UIActorBox(self)
+        MainActor.assumeIsolated {
+            let testCase = isolatedSelf.value
+            testCase.continueAfterFailure = false
+            XCUIDevice.shared.orientation = .portrait
 
-        app = XCUIApplication()
-        app.launchArguments = [
-            "-ui-testing",
-            "-ui-testing-reset-settings",
-            "-ui-testing-disable-stamp-fade"
-        ]
-        registerPermissionHandler()
-        app.launch()
-        handleOnboardingAndPermissions()
+            testCase.app = XCUIApplication()
+            testCase.app.launchArguments = [
+                "-ui-testing",
+                "-ui-testing-reset-settings",
+                "-ui-testing-disable-stamp-fade"
+            ]
+            testCase.registerPermissionHandler()
+            testCase.app.launch()
+            testCase.handleOnboardingAndPermissions()
+        }
     }
 
     override func tearDownWithError() throws {
-        XCUIDevice.shared.orientation = .portrait
-        app?.terminate()
-        app = nil
+        let isolatedSelf = UIActorBox(self)
+        MainActor.assumeIsolated {
+            let testCase = isolatedSelf.value
+            XCUIDevice.shared.orientation = .portrait
+            testCase.app?.terminate()
+            testCase.app = nil
+        }
     }
 
     /// 13 Proの背面3レンズと、節約モードを合計4秒だけ実撮影する（撮影は縦固定）。

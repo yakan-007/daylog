@@ -1,28 +1,37 @@
 import XCTest
 
 /// 実動画の作成・結合・書き出しを行わずに、実機固有の主要導線を確認する。
+@MainActor
 final class FragmentCameraCapacitySafeUITests: XCTestCase {
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        XCUIDevice.shared.orientation = .portrait
+        let isolatedSelf = UIActorBox(self)
+        MainActor.assumeIsolated {
+            let testCase = isolatedSelf.value
+            testCase.continueAfterFailure = false
+            XCUIDevice.shared.orientation = .portrait
 
-        app = XCUIApplication()
-        app.launchArguments = [
-            "-ui-testing",
-            "-ui-testing-reset-settings",
-            "-ui-testing-disable-stamp-fade"
-        ]
-        registerPermissionHandler()
-        app.launch()
-        handlePermissionsIfNeeded()
+            testCase.app = XCUIApplication()
+            testCase.app.launchArguments = [
+                "-ui-testing",
+                "-ui-testing-reset-settings",
+                "-ui-testing-disable-stamp-fade"
+            ]
+            testCase.registerPermissionHandler()
+            testCase.app.launch()
+            testCase.handlePermissionsIfNeeded()
+        }
     }
 
     override func tearDownWithError() throws {
-        XCUIDevice.shared.orientation = .portrait
-        app?.terminate()
-        app = nil
+        let isolatedSelf = UIActorBox(self)
+        MainActor.assumeIsolated {
+            let testCase = isolatedSelf.value
+            XCUIDevice.shared.orientation = .portrait
+            testCase.app?.terminate()
+            testCase.app = nil
+        }
     }
 
     func testSettingsControlsStampVisibility() throws {

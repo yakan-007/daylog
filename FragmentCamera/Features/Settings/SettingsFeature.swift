@@ -414,7 +414,7 @@ struct SettingsFeatureView: View {
                     options: DateStampDateOrder.allCases.map { ($0, $0.title) },
                     selection: Binding(
                         get: { viewModel.dateOrder },
-                        set: viewModel.selectDateOrder
+                        set: { viewModel.selectDateOrder($0) }
                     )
                 )
                 .accessibilityIdentifier("settings.stamp.dateOrder")

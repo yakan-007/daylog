@@ -54,6 +54,25 @@ private final class MediaExportCancellationController: @unchecked Sendable {
     }
 }
 
+/// AVAssetExportSession.progressは書き出し中に読み取ることを想定した値。
+/// 非Sendableなセッションをこの監視オブジェクトだけに閉じ込める。
+private final class MediaExportProgressMonitor: @unchecked Sendable {
+    private let exporter: AVAssetExportSession
+    private let progress: @Sendable (Double) -> Void
+
+    init(exporter: AVAssetExportSession, progress: @escaping @Sendable (Double) -> Void) {
+        self.exporter = exporter
+        self.progress = progress
+    }
+
+    func run() async {
+        while !Task.isCancelled {
+            progress(Double(exporter.progress))
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+}
+
 /// 撮影後変換と日次結合で共有する、ファイル書き出しの唯一の実装。
 final class MediaExporter {
     private let temporaryFileStore: TemporaryFileStore
@@ -148,11 +167,12 @@ final class MediaExporter {
 
             do {
                 progress(0)
+                let progressMonitor = MediaExportProgressMonitor(
+                    exporter: exporter,
+                    progress: progress
+                )
                 let progressTask = Task {
-                    while !Task.isCancelled {
-                        progress(Double(exporter.progress))
-                        try? await Task.sleep(for: .milliseconds(100))
-                    }
+                    await progressMonitor.run()
                 }
                 defer { progressTask.cancel() }
                 try await exporter.export(to: outputURL, as: outputType)

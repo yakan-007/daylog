@@ -2,6 +2,21 @@ import XCTest
 @testable import FragmentCamera
 
 final class DayVideoExportPolicyTests: XCTestCase {
+    func testJoinDoesNotReencodeAfterOutOfSpaceFailure() {
+        let error = NSError(
+            domain: NSCocoaErrorDomain,
+            code: NSFileWriteOutOfSpaceError
+        )
+
+        XCTAssertFalse(DayVideoJoinFallbackPolicy.shouldReencode(after: error))
+    }
+
+    func testJoinReencodesAfterCompatibilityFailure() {
+        let error = NSError(domain: "compatibility", code: -1)
+
+        XCTAssertTrue(DayVideoJoinFallbackPolicy.shouldReencode(after: error))
+    }
+
     func testWarnsBeforeChunkedBoundary() {
         let assessment = DayVideoExportPolicy.assess(
             clipCount: 60,

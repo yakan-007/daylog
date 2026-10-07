@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Photos
 
 struct ExportShareItem: Identifiable {
@@ -141,7 +141,16 @@ enum DayVideoExporterError: LocalizedError {
     }
 }
 
-final class DayVideoExporter {
+enum DayVideoJoinFallbackPolicy {
+    /// 再エンコードで解決できる互換性エラーだけを再試行する。
+    /// 容量不足は処理量を増やしても解決しないため、そのまま上位へ返す。
+    static func shouldReencode(after error: Error) -> Bool {
+        !VlogishFailureMapper.isStorageUnavailable(error)
+    }
+}
+
+/// 書き出し状態は各呼び出しのローカル値で、共有する一時ファイル管理も並行利用に対応する。
+final class DayVideoExporter: @unchecked Sendable {
     private let temporaryFileStore: TemporaryFileStore
     private let mediaExporter: MediaExporter
     private let compositionBuilder = DayVideoCompositionBuilder()
@@ -424,10 +433,10 @@ final class DayVideoExporter {
             return url
         } catch is CancellationError {
             throw CancellationError()
-        } catch where VlogishFailureMapper.isStorageUnavailable(error) {
-            // 容量不足は、もっと重い書き出し直しに進んでも同じ結果になるので、そのまま返す。
-            throw error
         } catch {
+            guard DayVideoJoinFallbackPolicy.shouldReencode(after: error) else {
+                throw error
+            }
             // 形式の相性で失敗した時だけ、書き出し直しに切り替える。
             AppLog.export.warning(
                 "day_export.join_passthrough.fail reason=\(error.localizedDescription, privacy: .private)"
@@ -578,6 +587,11 @@ private final class PhotoKitVideoAssetRequest: @unchecked Sendable {
         continuation = self.continuation
         self.continuation = nil
         lock.unlock()
-        continuation?.resume(with: result)
+        switch result {
+        case .success(let asset):
+            continuation?.resume(returning: asset)
+        case .failure(let error):
+            continuation?.resume(throwing: error)
+        }
     }
 }

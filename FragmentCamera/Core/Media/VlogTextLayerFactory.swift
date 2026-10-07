@@ -77,7 +77,8 @@ enum VlogTextLayerFactory {
         case .center: .center
         case .trailing: .right
         }
-        textLayer.contentsScale = UIScreen.main.scale
+        // 動画合成の座標はピクセル基準。画面のScaleへ依存させず十分な解像度で描く。
+        textLayer.contentsScale = 2
         textLayer.frame = CGRect(
             x: horizontalPadding,
             y: verticalPadding,

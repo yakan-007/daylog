@@ -89,7 +89,8 @@ final class PlaceNameResolver: PlaceNameResolving, @unchecked Sendable {
     }
 }
 
-private final class ReverseGeocodeRequest {
+/// 完了はロックで一度だけ取り出す。CLGeocoderは開始後のcancelを別キューから受けられる。
+private final class ReverseGeocodeRequest: @unchecked Sendable {
     private let geocoder = CLGeocoder()
     private let lock = NSLock()
     private var continuation: CheckedContinuation<String?, Never>?
