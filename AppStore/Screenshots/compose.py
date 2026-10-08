@@ -2,8 +2,9 @@
 """App Store 用スクリーンショットを作る。
 
 使い方:
-  1. 実機かシミュレーターで画面を撮り、raw/ja/01.png〜05.png（英語は raw/en/）に置く。
-  2. python3 compose.py           → out/ja/01.png … out/en/05.png（1320×2868, 6.9インチ用）
+  1. 実機かシミュレーターで画面を撮り、raw/<言語>/01.png〜05.png に置く
+     （言語: ja, en, ko, zh-Hans, zh-Hant。アプリをその言語にして撮る）。
+  2. python3 compose.py           → out/<言語>/01.png … 05.png（1320×2868, 6.9インチ用）
 
 文言は CAPTIONS を直す。必要なもの: Pillow（pip install pillow）。
 画面が無い番号はグレーの仮画面で作る（レイアウト確認用）。
@@ -33,6 +34,55 @@ CAPTIONS = {
         ("Add a note", "to the date."),
         ("Share the whole day", "as one video."),
     ],
+    "ko": [
+        ("순간을 찍고,", "일상으로 돌아가요."),
+        ("하루를,", "하나의 타임라인에."),
+        ("찍지 않은 시간도,", "하루의 일부."),
+        ("날짜에,", "한마디를 더해요."),
+        ("하루를 한 편으로,", "그대로 공유."),
+    ],
+    "zh-Hans": [
+        ("拍下一瞬，", "回到日常。"),
+        ("把一天，", "放进一条时间轴。"),
+        ("没拍的时间，", "也是一天的一部分。"),
+        ("在日期旁，", "写一句话。"),
+        ("把一天合成一段，", "直接分享。"),
+    ],
+    "zh-Hant": [
+        ("拍下一瞬，", "回到日常。"),
+        ("把一天，", "放進一條時間軸。"),
+        ("沒拍的時間，", "也是一天的一部分。"),
+        ("在日期旁，", "寫一句話。"),
+        ("把一天合成一段，", "直接分享。"),
+    ],
+}
+
+# 見出しの太字。言語ごとに、その文字を持っているフォントを上から探す。
+# Noto Sans CJK の ttc は 0:JP 1:KR 2:SC 3:TC の順に入っている。
+TITLE_FONTS = {
+    "ja": [
+        ("/System/Library/Fonts/ヒラギノ角ゴシック W7.ttc", 0),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
+    ],
+    "en": [
+        ("/System/Library/Fonts/ヒラギノ角ゴシック W7.ttc", 0),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
+    ],
+    "ko": [
+        ("/System/Library/Fonts/AppleSDGothicNeo.ttc", None),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 1),
+    ],
+    "zh-Hans": [
+        ("/System/Library/Fonts/PingFang.ttc", None),
+        ("/System/Library/Fonts/Hiragino Sans GB.ttc", None),
+        ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 2),
+    ],
+    "zh-Hant": [
+        ("/System/Library/Fonts/PingFang.ttc", None),
+        ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 3),
+    ],
 }
 
 FONT_CANDIDATES = {
@@ -57,6 +107,34 @@ def font(kind: str, size: int) -> ImageFont.FreeTypeFont:
                 index = 0  # JP は ttc 内の Noto Sans CJK JP
             return ImageFont.truetype(path, size, index=index)
     return ImageFont.load_default()
+
+
+def bold_face(path: str, size: int) -> ImageFont.FreeTypeFont:
+    """ttc の中から太字の書体を探す（見つからなければ先頭）。"""
+    for index in range(16):
+        try:
+            face = ImageFont.truetype(path, size, index=index)
+        except OSError:
+            break
+        style = face.getname()[1].lower()
+        if any(word in style for word in ("bold", "semibold", "w6", "w7")):
+            return face
+    return ImageFont.truetype(path, size, index=0)
+
+
+def title_font(lang: str, size: int) -> ImageFont.FreeTypeFont:
+    # index が None のものは、ttc の中から太字を探す。
+    for path, index in TITLE_FONTS.get(lang, TITLE_FONTS["ja"]):
+        if not Path(path).exists():
+            continue
+        if index is None:
+            return bold_face(path, size)
+        try:
+            return ImageFont.truetype(path, size, index=index)
+        except OSError:
+            return ImageFont.truetype(path, size, index=0)
+    print(f"warning: {lang} の見出しフォントが見つからない。文字が化けるかもしれない")
+    return font("bold", size)
 
 
 def draw_mark(draw: ImageDraw.ImageDraw, x: int, y: int, width: int) -> None:
@@ -93,7 +171,7 @@ def compose(lang: str, index: int) -> Image.Image:
 
     draw_mark(draw, margin, 250, 300)
 
-    title = font("bold", 104 if lang == "ja" else 96)
+    title = title_font(lang, 96 if lang == "en" else 104)
     line1, line2 = CAPTIONS[lang][index]
     draw.text((margin, 360), line1, fill=INK, font=title)
     draw.text((margin, 500), line2, fill=INK, font=title)

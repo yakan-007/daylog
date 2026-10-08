@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Vlogish</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>日々の短い動画を素早く撮影するため、カメラを使用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
